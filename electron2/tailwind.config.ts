@@ -1,7 +1,9 @@
 import type { Config } from 'tailwindcss'
 
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // web/index.html 是网页演示版的入口（见 vite.web.config.ts），
+  // 不列进来的话它 body 上的 class 会被 tailwind 当成未使用而摇掉
+  content: ['./index.html', './web/index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {

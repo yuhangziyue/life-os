@@ -1,0 +1,76 @@
+# 网页演示版 → GitHub Pages
+#
+# 一次性前置操作（只有仓库 owner 能做，CI 代替不了）：
+#   Settings → Pages → Build and deployment → Source 选 “GitHub Actions”
+# 没选之前这个 workflow 会在 deploy 步骤报 “Pages site not found”。
+#
+# 上线地址：https://<用户名>.github.io/<仓库名>/
+# 页面用的是 base: './' + HashRouter，子路径直接可用，不需要任何 rewrite 规则。
+
+name: 部署网页演示版
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'electron2/src/**'
+      - 'electron2/web/**'
+      - 'electron2/vite.web.config.ts'
+      - 'electron2/scripts/finalize-web.mjs'
+      - 'electron2/package.json'
+      - 'electron2/tailwind.config.ts'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同时只跑一个部署；新的推上来就把排队中的那个顶掉（不打断正在跑的）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: electron2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 本机默认 node 是 v16，Vite 6 在那上面会挂在 crypto.getRandomValues 上。
+          # CI 固定 20，别跟着本机默认版本漂。
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: electron2/package-lock.json
+
+      # --ignore-scripts 跳过 better-sqlite3 的原生编译：
+      # 那是 Electron 主进程用的，网页版整个 bundle 里没有它，
+      # 在 CI 上编译一遍纯属白等好几分钟（还可能因为工具链差异直接失败）。
+      - run: npm ci --ignore-scripts
+
+      - run: npm run typecheck
+
+      # build:web 自带产物门禁（scripts/finalize-web.mjs）：
+      # 缺 index.html / 缺 css / js 明显偏小都会让这一步非零退出，
+      # 不会把一个白屏的壳子推上线。
+      - run: npm run build:web
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: electron2/dist-web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
