@@ -1,18 +1,32 @@
-# 网页演示版 → GitHub Pages（Source = GitHub Actions）
+# 网页演示版 —— 构建 + 产物防漂移门禁
 #
-# 事实记录（2026-08-24，别再改错方向）：
-# Pages 的 Source 已经是 "GitHub Actions"。判据是内置的 pages-build-deployment
-# 对新推的提交**完全不再触发**（分支模式下它必触发，11:12 那次就触发过），
-# 等了 7 分钟零记录。所以发布权在这个 workflow 手里，不在分支上。
+# ★ 发布方式（2026-08-24 用实证确定，别再靠猜改）
 #
-# 曾经走错的一版：把这里改成「只做产物校验、不部署」，同时把构建产物同步进仓库根，
-# 想蹭分支模式免设置发布。结果是**没有任何东西负责发布**，线上停在旧版本，
-# /assets/*.js 全 404。教训是：改发布链之前先确认发布源是谁，别靠猜。
+# Pages 的 Source 是 **Deploy from a branch: main / (root)**。
+# 发布由 GitHub 内置的 `pages build and deployment` 完成，**不是**这个 workflow。
+# 所以仓库根目录的 index.html + assets/ 就是线上页面，
+# 由 electron2/scripts/sync-pages.mjs 同步进来，清单在 .pages-manifest。
 #
-# 上线地址：https://yuhangziyue.github.io/life-os/
-# 页面是 base: './' + HashRouter，子路径直接可用，不需要任何 rewrite 规则。
+# 怎么确定的（三条互相印证的证据）：
+#   1. 删掉根目录产物后，线上 /assets/*.js 立刻 404 —— 线上内容就来自根目录
+#   2. 内置 pages-build-deployment 对 ece6ee5 / b9c971d 都触发了，且成功
+#   3. b9c971d 只改了 md 和删产物、没命中本 workflow 的 paths，
+#      于是只有内置部署跑了，它发布了空根目录 —— 这就是当时 404 的直接原因
+#
+# 走过的弯路（留着防止重犯）：中途因为「内置部署对 6567e02 漏触发了一次」，
+# 误判成 Source 已改为 GitHub Actions，把这里换成 upload-pages-artifact + deploy-pages。
+# 那一版 deploy 竟然也 success，于是更加确信 —— 但真正把 demo 送上线的是同一时刻
+# 并行跑的内置部署。**两条链同时成功，会让人把功劳记在错的那条上。**
+#
+# 这个 workflow 现在只干一件事，但很关键：
+#   把 src 重新构建一遍，逐字节比对根目录产物是否与之一致。
+# 产物入库最大的风险是「改了 src 忘了同步 ⇒ 线上悄悄跑旧版本」——不报错、没人发现。
+# 忘同步的修法：npm run deploy:pages 然后提交推送。
+#
+# paths 必须同时盯住 src 和根目录产物：只盯 src 的话，
+# 一次「只动产物」的提交会绕过门禁（b9c971d 就是这样溜过去的）。
 
-name: 部署网页演示版
+name: 网页演示版构建校验
 
 on:
   push:
@@ -24,20 +38,18 @@ on:
       - 'electron2/scripts/**'
       - 'electron2/package.json'
       - 'electron2/tailwind.config.ts'
+      - 'index.html'
+      - 'assets/**'
+      - '.nojekyll'
+      - '.pages-manifest'
       - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,21 +71,32 @@ jobs:
 
       - run: npm run typecheck
 
-      # build:web 自带产物门禁（scripts/finalize-web.mjs）：
-      # 缺 index.html / 缺 css / js 明显偏小都会让这一步非零退出，
-      # 不会把一个白屏的壳子推上线。
-      - run: npm run build:web
+      # build:web 自带产物门禁（缺 index.html / 缺 css / js 明显偏小都会红），
+      # sync-pages --check 再管「根目录那份是不是最新的」。
+      - run: npm run check:pages
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: electron2/dist-web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+# ---- 若日后把 Pages Source 改成 "GitHub Actions"，用下面这段替换上面的 verify job ----
+# 切换前务必先确认 Source 真的改了：判据是**推一次 main 之后，
+# Actions 列表里不再出现内置的 "pages build and deployment"**。
+# 别看页面长相反推，也别只看自己的 deploy job 是否 success —— 它可能是被并行的内置链救的。
+#
+#  build:
+#    runs-on: ubuntu-latest
+#    defaults: { run: { working-directory: electron2 } }
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: actions/setup-node@v4
+#        with: { node-version: '20', cache: npm, cache-dependency-path: electron2/package-lock.json }
+#      - run: npm ci --ignore-scripts
+#      - run: npm run typecheck
+#      - run: npm run build:web
+#      - uses: actions/upload-pages-artifact@v3
+#        with: { path: electron2/dist-web }
+#  deploy:
+#    needs: build
+#    runs-on: ubuntu-latest
+#    permissions: { pages: write, id-token: write }
+#    environment: { name: github-pages, url: '${{ steps.deployment.outputs.page_url }}' }
+#    steps:
+#      - id: deployment
+#        uses: actions/deploy-pages@v4
