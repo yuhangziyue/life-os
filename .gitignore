@@ -1,0 +1,22 @@
+# 依赖与构建产物
+node_modules/
+dist/
+release/
+.pnpm-store/
+*.tsbuildinfo
+
+# 本机 Claude Code 配置（含本地权限设置，属个人环境不属项目）
+.claude/
+
+# 指向本机技能库 / 需求中央源的软链接
+# 它们的真身在 ~/.claude/ 下，别人 clone 下来只会拿到死链
+skills
+shared-requirements
+
+# e2e 运行产物：截图与上次结果每跑一次都会重生成
+electron2/e2e/shots/
+electron2/e2e/shots-*/
+electron2/e2e/last-run.json
+
+# macOS
+.DS_Store

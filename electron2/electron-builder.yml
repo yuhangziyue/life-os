@@ -1,0 +1,37 @@
+appId: com.lifeos.app
+productName: 生命之花
+
+directories:
+  # 不能用 dist —— 那是 vite 的输出目录，electron-builder 往同一个目录写产物会自己吃自己
+  output: release
+  buildResources: build
+
+files:
+  # 主进程代码在 electron/，不是 dist-electron。之前这里漏了它，
+  # 打出来的包缺 main.cjs / preload.cjs / database.cjs，装上直接起不来。
+  - electron/**/*
+  - dist/**/*
+  - package.json
+
+# better-sqlite3 是原生模块，.node 文件在 asar 里加载不了，必须解包
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # 签名现状（v3.2 圆桌交锋 3 的诚实交付）：
+  #   identity: null → electron-builder 走 ad-hoc 签名，本机可跑，**别人的机器仍会被 Gatekeeper 拦**。
+  #   要让陌生人双击即用必须公证（notarize），那需要 Apple 开发者账号（$99/年）+ Developer ID 证书，
+  #   这一步卡在账号上，属子曰的商业决策，不是技术项。在那之前分发一律附 INSTALL.md 的说明。
+  identity: null
+  hardenedRuntime: false
+  icon: build/icon.icns
+
+dmg:
+  title: 生命之花
+  window:
+    width: 500
+    height: 400

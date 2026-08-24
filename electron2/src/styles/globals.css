@@ -1,0 +1,916 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   生命之花 v3 主题 token
+   「暗夜花园」= 默认（:root）· 「晨曦花园」= [data-theme="dawn"]
+   规矩：组件一律引用 token，禁止写死色值；Canvas 通过 cssVar() 读同一套。
+   ============================================================ */
+
+:root {
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #141414;
+  --bg-card: #1a1a1a;
+  --bg-hover: #222222;
+  --btn-hover: #2a2a2a;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+  --text-primary: #f0eade;
+  --text-secondary: #aaa294;
+  --text-muted: #78705f;
+  --accent: #c9a96e;
+  --accent-hover: #d4b87a;
+  --accent-dim: #8b7355;
+  --accent-contrast: #0d0d0d;
+  --success: #7a9e7e;
+  --danger: #b85c5c;
+  --warning: #c9a96e;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --card-radius: 12px;
+  --card-shadow: none;
+  --dew: #f5f0e6;            /* 花瓣上的露珠 */
+}
+
+/* ---- 晨曦花园：亮色 · 茶室暖调 ----
+   2026-08-18 三稿定版：一稿粉白太亮刺眼，二稿宣纸黄压过头显得低沉。
+   三稿参考茶室：米墙透光的暖象牙底、榻榻米浅木色、蜜茶琥珀主色、竹绿点缀。
+   茶室的暖是「亮而柔」——有阳光，但隔了一层障子纸；全局仍无一处纯白。 */
+/* v5 定版（2026-08-18 子曰截图定调）：改名「禅意茶室」——
+   深木色侧栏 + 米色宣纸主板的双色调结构；主色从蜜橙改为鎏金，点缀橄榄绿。 */
+[data-theme='dawn'] {
+  --bg-primary: #f2ecdc;
+  --bg-secondary: #eae2cd;
+  --bg-card: #f7f2e3;
+  --bg-hover: #ece3cc;
+  --btn-hover: #e3d8bc;
+  --border: #ddd2b4;
+  --border-strong: #c4b58e;
+  --text-primary: #3b2f1e;
+  --text-secondary: #6b5c41;
+  --text-muted: #94856a;
+  --accent: #ab8733;
+  --accent-hover: #bb9743;
+  --accent-dim: #ded0a6;
+  --accent-contrast: #fff8e6;
+  --success: #77864f;
+  --danger: #b5764f;
+  --warning: #b3913f;
+  --overlay: rgba(59, 47, 30, 0.35);
+  --card-radius: 16px;
+  --card-shadow: 0 1px 2px rgba(120, 95, 50, 0.06), 0 8px 24px rgba(120, 95, 50, 0.09);
+  --dew: #fdf8ea;
+}
+
+/* ---- 花间集：亮色 · 鲜花主色调 ----
+   2026-08-18 子曰追加：比茶室更明亮鲜艳一档，但不能亮到扎眼。
+   取「干花」而不是「霓虹」：蔷薇红做主色，鸢尾紫、叶绿做辅色，
+   底色是带一点粉的花笺纸。 */
+/* v4 定版（2026-08-18 子曰效果图定调）：白粉渐变底、白卡片、
+   珊瑚玫瑰渐变做主色，薄荷绿/薰衣草紫点缀——鲜亮但不过曝。 */
+[data-theme='bloom'] {
+  --bg-primary: #fbeef1;
+  --bg-secondary: #f7e3e9;
+  --bg-card: #fffbfc;
+  --bg-hover: #f8e5eb;
+  --btn-hover: #f2d6df;
+  --border: #f0d4dc;
+  --border-strong: #ddafbe;
+  --text-primary: #46283b;
+  --text-secondary: #8a6579;
+  --text-muted: #b18fa0;
+  --accent: #e75565;
+  --accent-hover: #ee6b76;
+  --accent-dim: #f8ccd4;
+  --accent-contrast: #ffffff;
+  --success: #4cae7c;
+  --danger: #e0705c;
+  --warning: #eda23f;
+  --overlay: rgba(70, 40, 59, 0.32);
+  --card-radius: 16px;
+  --card-shadow: 0 1px 2px rgba(210, 110, 135, 0.07), 0 8px 24px rgba(210, 110, 135, 0.10);
+  --dew: #ffffff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 正文整体放大一档（root 16px → 17px，所有 rem 字号随之 +6%）。
+   这是晚上安静用的产品，不是信息流——字要像书页，不要像 dashboard。 */
+html {
+  font-size: 106.25%;
+}
+
+/* 手写风字体栈（2026-08-18 子曰点名：温暖、圆润、Mac/Windows 基本都有）
+   Mac 依次命中：手札体 → 翩翩体 → 圆体 → 楷体；Windows 命中：楷体 → 幼圆。 */
+:root {
+  --font-hand: 'Hannotate SC', 'HanziPen SC', 'Yuanti SC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'YouYuan',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-seal: 'Songti SC', 'STSong', 'Noto Serif SC', serif;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-hand);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+/* 页面大标题：同一副手写笔迹，字距略开，像在纸上落款 */
+h1 {
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+}
+
+/* 卡片小节标题是内容的路标，用主文字色立起来，别再灰下去 */
+.card h2 {
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+/* 滚动条 - 极简 */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* 选中文字 */
+::selection {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+/* ===== 工具类 ===== */
+
+.glass {
+  background: rgba(26, 26, 26, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+[data-theme='dawn'] .glass,
+[data-theme='bloom'] .glass {
+  background: rgba(255, 250, 246, 0.75);
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 20px;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.4s ease;
+}
+.card:hover {
+  border-color: var(--border-strong);
+}
+[data-theme='dawn'] .card:hover {
+  box-shadow: 0 2px 4px rgba(154, 120, 90, 0.08), 0 12px 32px rgba(154, 120, 90, 0.14);
+}
+[data-theme='bloom'] .card:hover {
+  box-shadow: 0 2px 4px rgba(160, 90, 115, 0.08), 0 12px 32px rgba(160, 90, 115, 0.14);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  outline: none;
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.btn:hover {
+  background: var(--btn-hover);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+[data-theme='dawn'] .btn,
+[data-theme='bloom'] .btn {
+  border-radius: 10px;
+}
+[data-theme='dawn'] .btn-primary {
+  background: linear-gradient(135deg, #bb9743, #a9862f);
+  box-shadow: 0 2px 8px rgba(171, 135, 51, 0.30);
+}
+[data-theme='dawn'] .btn-primary:hover {
+  background: linear-gradient(135deg, #c7a350, #b9953d);
+  box-shadow: 0 3px 12px rgba(171, 135, 51, 0.40);
+}
+[data-theme='bloom'] .btn-primary {
+  background: linear-gradient(135deg, #f46d55, #e75565);
+  box-shadow: 0 2px 8px rgba(231, 85, 101, 0.32);
+}
+[data-theme='bloom'] .btn-primary:hover {
+  background: linear-gradient(135deg, #f77e66, #ee6b76);
+  box-shadow: 0 3px 12px rgba(231, 85, 101, 0.42);
+}
+.btn-ghost {
+  background: transparent;
+}
+.btn-ghost:hover {
+  background: var(--bg-hover);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  border-color: var(--accent);
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
+[data-theme='dawn'] .input {
+  background: #f6f0df;
+  border-radius: 10px;
+}
+[data-theme='bloom'] .input {
+  background: #fff8f9;
+  border-radius: 10px;
+}
+
+/* ===== 侧边栏 · 禅意 ===== */
+
+/* 与主面板融合：不要分隔硬边框，同一片底色里用极淡的渐变自然过渡 */
+.zen-aside {
+  border: none;
+  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-primary) 82%);
+}
+/* 禅意茶室：侧栏是深木色静室，主板是亮的宣纸——截图定调的双色调结构 */
+[data-theme='dawn'] .zen-aside {
+  background: linear-gradient(180deg, #302818, #292216);
+}
+[data-theme='dawn'] .zen-aside > div > button {
+  color: #e8ddc4;
+}
+[data-theme='dawn'] .zen-aside a {
+  color: #a3937a;
+}
+[data-theme='dawn'] .zen-aside a:not(.zen-active):hover {
+  color: #d8cbae;
+  background: rgba(255, 244, 214, 0.06);
+}
+[data-theme='dawn'] .zen-aside a.zen-active {
+  background: #4a3c25;
+  color: #f0e4c8;
+}
+[data-theme='dawn'] .zen-aside .zen-icon {
+  background: rgba(255, 244, 214, 0.08);
+  color: #b7a888;
+}
+[data-theme='dawn'] .zen-aside a.zen-active .zen-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+[data-theme='dawn'] .zen-aside .zen-line,
+[data-theme='dawn'] .zen-aside p {
+  color: #8d7f66;
+}
+/* 花间集：侧栏是近白（带一丝暖粉），比主板更亮——子曰色卡定调 */
+[data-theme='bloom'] .zen-aside {
+  background: linear-gradient(180deg, #fffdfd, #fefafa 82%);
+}
+[data-theme='bloom'] .zen-aside a.zen-active {
+  background: linear-gradient(135deg, #f46d55, #e75565);
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(231, 85, 101, 0.35);
+}
+[data-theme='bloom'] .zen-aside a.zen-active .zen-icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+/* 顶部拖拽带（侧栏侧）：不画任何底色，直接透出 .zen-aside 的渐变，
+   这样它与下面的菜单区是同一片颜色，顶部不出现分割线 */
+.zen-drag-strip {
+  flex-shrink: 0;
+  background: transparent;
+}
+
+/* 菜单字号 20（子曰点名），手写体 */
+.zen-nav-label {
+  font-size: 20px;
+  font-family: var(--font-hand);
+  letter-spacing: 0.06em;
+}
+.zen-nav a {
+  transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease;
+}
+/* 未激活项：hover 轻轻右移一点 */
+.zen-nav a:not(.zen-active):hover {
+  transform: translateX(3px);
+}
+
+/* 激活项：hover 不再有任何颜色/背景变化，只轻轻抖一下位置
+   （子曰 2026-08-19 定：激活态本身已经够醒目，hover 再变色是噪音，别改回去）
+   ⚠️ 三主题的 .zen-nav/.zen-aside a:hover 都必须带 :not(.zen-active)，
+   否则它们与 a.zen-active 规则特异性同分、靠书写顺序决胜——bloom 就是这么把
+   激活项的珊瑚渐变胶囊在 hover 时换成浅珊瑚底的（2026-08-19 取证结论）。 */
+@keyframes zenNudge {
+  0%   { transform: translateX(0); }
+  30%  { transform: translateX(3px); }
+  65%  { transform: translateX(-1.5px); }
+  100% { transform: translateX(0); }
+}
+.zen-nav a.zen-active:hover {
+  animation: zenNudge 0.34s ease-out;
+}
+
+/* 单字印章式图标：一格暖底，一个汉字，像盖在宣纸上的小印 */
+.zen-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font-seal);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+a:not(.zen-active):hover .zen-icon {
+  color: var(--text-secondary);
+}
+a.zen-active .zen-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.zen-logo {
+  font-family: var(--font-hand);
+  letter-spacing: 0.28em;
+}
+
+.zen-line {
+  font-family: var(--font-hand);
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+}
+
+/* ===== 主面板 · 身心灵氛围 ===== */
+
+/* 主内容区顶上洒一片很淡的暖光，右下角一点竹绿的呼吸——像茶室里的光 */
+main {
+  position: relative;
+}
+main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 460px at 26% -8%, rgba(201, 169, 110, 0.06), transparent 70%),
+    radial-gradient(700px 420px at 108% 112%, rgba(122, 158, 126, 0.05), transparent 70%);
+}
+[data-theme='dawn'] main::before {
+  background:
+    radial-gradient(900px 460px at 26% -8%, rgba(214, 158, 74, 0.12), transparent 70%),
+    radial-gradient(700px 420px at 108% 112%, rgba(134, 164, 115, 0.10), transparent 70%);
+}
+[data-theme='bloom'] main::before {
+  background:
+    radial-gradient(900px 460px at 26% -8%, rgba(193, 91, 120, 0.10), transparent 70%),
+    radial-gradient(700px 420px at 108% 112%, rgba(142, 121, 168, 0.09), transparent 70%);
+}
+
+/* 换页入场：内容像一页纸被轻轻放下 */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+main > div {
+  animation: pageIn 0.45s ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+/* 主题页氛围底纹：一朵跟随主题色的半透明花瓣（PetalBackdrop） */
+main > div.petal-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  animation: none;
+  opacity: 0.07;
+}
+[data-theme='dawn'] main > div.petal-backdrop {
+  opacity: 0.06;
+}
+[data-theme='bloom'] main > div.petal-backdrop {
+  opacity: 0.09;
+}
+
+/* ===== 悬浮态 · 三主题各有各的光（2026-08-18 子曰点名定制） ===== */
+
+/* 卡片的手感：悬停时轻轻托起一点点 */
+.card {
+  transition: border-color 0.25s, box-shadow 0.3s ease, background 0.4s ease, transform 0.25s ease;
+}
+.card:hover {
+  transform: translateY(-1px);
+}
+
+/* 暗夜花园：花瓣在夜里发一点点金光 */
+[data-theme='night'] .card:hover,
+:root:not([data-theme]) .card:hover {
+  border-color: rgba(201, 169, 110, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 0 18px rgba(201, 169, 110, 0.08);
+}
+[data-theme='night'] .btn-primary:hover {
+  box-shadow: 0 0 16px rgba(201, 169, 110, 0.35);
+}
+[data-theme='night'] .zen-nav a:not(.zen-active):hover {
+  background: rgba(201, 169, 110, 0.08);
+}
+
+/* 禅意茶室：纸面被灯烘暖，描一道鎏金细边 */
+[data-theme='dawn'] .card:hover {
+  border-color: #c9b071;
+  box-shadow: 0 2px 4px rgba(120, 95, 50, 0.08), 0 12px 32px rgba(120, 95, 50, 0.14);
+}
+[data-theme='dawn'] .btn:hover {
+  box-shadow: 0 2px 10px rgba(120, 95, 50, 0.14);
+}
+
+/* 花间集：珊瑚色光晕，微微俏皮一点 */
+[data-theme='bloom'] .card:hover {
+  border-color: #eeaebf;
+  box-shadow: 0 2px 4px rgba(231, 85, 101, 0.08), 0 12px 32px rgba(231, 85, 101, 0.14);
+  transform: translateY(-2px);
+}
+[data-theme='bloom'] .btn-primary:hover {
+  transform: scale(1.03);
+}
+[data-theme='bloom'] .zen-nav a:not(.zen-active):hover {
+  background: rgba(231, 85, 101, 0.07);
+  color: #c95568;
+}
+
+/* 可点行（任务/行动/历史条目）的悬浮呼吸 */
+.card [class*='rounded-lg']:hover,
+.card [class*='rounded-xl']:hover {
+  transition: background 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > div { animation: none; }
+  .card:hover { transform: none; }
+  .zen-nav a:not(.zen-active):hover { transform: none; }
+  .zen-nav a.zen-active:hover { animation: none; }
+  [data-theme='bloom'] .btn-primary:hover { transform: none; }
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.6;
+}
+
+/* 原生控件跟主题走（初始分滑块曾是浏览器默认蓝，与整体气质不符） */
+input[type='range'],
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+/* 弹层遮罩 */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay);
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 首启引导「花开了」：花从含苞缓缓撑开（慢 ≥400ms 原则） */
+@keyframes bloomIn {
+  from { opacity: 0; transform: scale(0.55); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-bloom {
+  animation: bloomIn 1.1s cubic-bezier(0.22, 0.8, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-bloom { animation: none; }
+}
+
+/* ===== 花形图 ===== */
+
+/* 呼吸感：慢（≥400ms 的世界）、微（只动透明度和 1% 缩放）、可关（跟随系统减弱动态） */
+@keyframes flowerBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.012); }
+}
+.flower-breathe {
+  animation: flowerBreathe 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flower-breathe { animation: none; }
+  .animate-fade-in { animation: none; }
+}
+
+/* 焦点维度金边的呼吸（v3.2）——
+   老架 J2 红线：呼吸的是整层，不是每帧重画。金线画在独立的一张 canvas 上，
+   这里只动那一层的 opacity（走合成层，零重绘、零 shadowBlur、Canvas 仍是静态的）。 */
+@keyframes focusBreathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.focus-breathe {
+  animation: focusBreathe 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 减弱动态下金边静止在中间亮度，不闪、不熄 */
+  .focus-breathe { animation: none; opacity: 0.8; }
+}
+
+/* ===== 行动回响 toast ===== */
+@keyframes echoIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.echo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 14px 16px;
+  animation: echoIn 0.4s ease-out;
+}
+[data-theme='dawn'] .echo-toast {
+  box-shadow: 0 12px 40px rgba(154, 120, 90, 0.28);
+}
+[data-theme='bloom'] .echo-toast {
+  box-shadow: 0 12px 40px rgba(160, 90, 115, 0.26);
+}
+@media (prefers-reduced-motion: reduce) {
+  .echo-toast { animation: none; }
+}
+
+/* 雷达图容器 */
+.radar-container {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+/* ===== 段选器（统计页 日/周/月/年、回顾页 周/月/年回顾）=====
+   同一族问题：选中只靠 accent/20 淡底 + accent 字，三主题下都不够显眼。 */
+.seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.seg-item {
+  padding: 7px 18px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-hand);
+  font-size: 14px;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+.seg-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.seg-item.is-on {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+[data-theme='dawn'] .seg-item.is-on {
+  box-shadow: 0 2px 10px rgba(171, 135, 51, 0.30);
+}
+[data-theme='bloom'] .seg-item.is-on {
+  background: linear-gradient(135deg, #f46d55, #e75565);
+  box-shadow: 0 2px 10px rgba(231, 85, 101, 0.32);
+}
+
+/* ===== 快速记录的标签（维度 / 分支 / 质量）=====
+   选中态原来只是描边或 accent/20 淡底，暗夜与花间集下几乎看不出选了谁。
+   现在：维度用自己的植物色实心（--chip 由组件按维度色注入），分支/质量用 accent 实心。 */
+.qa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-family: var(--font-hand);
+  font-size: 12px;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+.qa-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.qa-chip-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* 分支 / 质量：accent 实心 */
+.qa-chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* 维度：用该维度的植物色实心，文字反白——一眼看得出选的是哪片花瓣 */
+.qa-chip-dim.is-on {
+  background: var(--chip);
+  border-color: var(--chip);
+  color: #fff;
+  box-shadow: 0 3px 14px color-mix(in srgb, var(--chip) 45%, transparent);
+}
+.qa-chip-dim.is-on .qa-chip-dot {
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.qa-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.qa-chip-check {
+  font-size: 10px;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-chip.is-on { transform: none; }
+}
+
+/* ===== 花语手册的章节页签 =====
+   选中态原来只是 accent/15 底 + accent 字，三套主题下都太轻、看不出选中了哪章。 */
+.hb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.hb-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.hb-tab.is-active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(201, 169, 110, 0.14);
+}
+[data-theme='dawn'] .hb-tab.is-active {
+  box-shadow: 0 4px 16px rgba(120, 95, 50, 0.18);
+}
+[data-theme='bloom'] .hb-tab.is-active {
+  box-shadow: 0 4px 16px rgba(210, 110, 135, 0.20);
+}
+/* 印章：选中即实心 accent（未选中沿用 .zen-icon 的暖底灰字） */
+.hb-tab.is-active .zen-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hb-tab.is-active { transform: none; }
+}
+
+/* ===== 主题化下拉框（components/ui/Select）=====
+   原生 select 的弹层由系统绘制、拿不到 token，三套主题都管不到它，所以自绘。 */
+
+.zen-select {
+  position: relative;
+  display: inline-block;
+}
+
+.zen-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 128px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-hand);
+  font-size: 13px;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.zen-select-trigger:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.zen-select-trigger.has-value {
+  color: var(--text-primary);
+}
+.zen-select-trigger.is-open {
+  border-color: var(--accent);
+}
+
+.zen-select-label {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.zen-select-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.zen-select-dot.is-empty {
+  background: var(--border-strong);
+  opacity: 0.5;
+}
+
+.zen-select-arrow {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.zen-select-arrow.is-open {
+  transform: rotate(180deg);
+}
+
+.zen-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 100%;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
+  max-height: 280px;
+  overflow-y: auto;
+  animation: fadeIn 0.16s ease-out;
+}
+[data-theme='dawn'] .zen-select-menu {
+  box-shadow: 0 10px 32px rgba(120, 95, 50, 0.20);
+}
+[data-theme='bloom'] .zen-select-menu {
+  box-shadow: 0 10px 32px rgba(210, 110, 135, 0.20);
+}
+
+.zen-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-hand);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.zen-select-option.is-cursor {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.zen-select-option.is-selected {
+  color: var(--accent);
+}
+
+.zen-select-check {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zen-select-menu { animation: none; }
+  .zen-select-arrow { transition: none; }
+}
+
+/* ============================================================
+   主题化鼠标指针（v3.1 A1）
+   - 每主题两态：默认（--cursor-default）/ 可点（--cursor-pointer）
+   - ⚠️ Chromium 对 cursor 图逻辑尺寸上限 32px：超限整条声明被【静默丢弃】、
+     无声回退系统指针。这里统一 26px，改尺寸前先想起这句话。
+   - text / resize / drag 一律保留系统原生（输入是亲密行为，I-beam 不动）。
+   - 关闭开关：设置页「氛围」→ <html data-cursor='off'> 整站回系统指针。
+   ============================================================ */
+
+:root {
+  /* 暗夜花园 ·「萤火花瓣」：暖金花瓣带一圈含蓄的光 */
+  --cursor-default: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23e8d5a4'/><stop offset='1' stop-color='%23c9a96e'/></linearGradient></defs><circle cx='12' cy='12' r='10' fill='rgba(201,169,110,0.16)'/><circle cx='12' cy='12' r='6' fill='rgba(212,184,122,0.14)'/><path d='M2 2 C11 3 20 9 23 17 C24 21 21 24 17 23 C9 21 3 12 2 2 Z' fill='url(%23g)' stroke='rgba(13,13,13,0.5)' stroke-width='1'/><path d='M3.5 3.5 Q12 10 19 18.5' stroke='rgba(13,13,13,0.28)' stroke-width='0.8' fill='none'/></svg>") 2 2, auto;
+  --cursor-pointer: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23f4e4b8'/><stop offset='1' stop-color='%23d4b87a'/></linearGradient></defs><circle cx='12' cy='12' r='11' fill='rgba(212,184,122,0.24)'/><circle cx='12' cy='12' r='6' fill='rgba(232,213,164,0.22)'/><path d='M2 2 C12 2 21 8 23.5 16 C24.5 20.5 21 24 16.5 23 C8.5 21 3 12 2 2 Z' fill='url(%23g)' stroke='rgba(13,13,13,0.55)' stroke-width='1'/><path d='M3.5 3.5 Q12.5 9.5 19.5 18' stroke='rgba(13,13,13,0.3)' stroke-width='0.8' fill='none'/><circle cx='21' cy='4.5' r='1.4' fill='%23f4e4b8'/></svg>") 2 2, pointer;
+}
+
+/* 禅意茶室 ·「墨尖桂瓣」：鎏金细瓣配一笔墨色描边，像毛笔尖悬在纸上 */
+[data-theme='dawn'] {
+  --cursor-default: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><path d='M2 2 C10 4 18 10 22 18 C23 21.5 20.5 24 17.5 22.5 C10 19 3.5 11 2 2 Z' fill='%23ab8733' stroke='%233b2f1e' stroke-width='1.3'/><path d='M3.5 4 Q11 10.5 18.5 18.5' stroke='rgba(59,47,30,0.5)' stroke-width='0.9' fill='none'/></svg>") 2 2, auto;
+  --cursor-pointer: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><path d='M2 2 C10 4 18 10 22 18 C23 21.5 20.5 24 17.5 22.5 C10 19 3.5 11 2 2 Z' fill='%23bb9743' stroke='%233b2f1e' stroke-width='1.3'/><path d='M3.5 4 Q11 10.5 18.5 18.5' stroke='rgba(59,47,30,0.5)' stroke-width='0.9' fill='none'/><circle cx='3.2' cy='3.2' r='2' fill='%23e9d18a' stroke='%233b2f1e' stroke-width='0.7'/></svg>") 2 2, pointer;
+}
+
+/* 花间集 ·「樱瓣」：顶端带小缺口的樱花瓣，白粉渐变，可点态微微一旋 */
+[data-theme='bloom'] {
+  --cursor-default: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23fbd3da'/><stop offset='1' stop-color='%23e75565'/></linearGradient></defs><path d='M2 2 C11 2.5 19 7 22.5 14 L20.2 16.3 L23 18.5 C23.5 21.5 20.5 24 17 23 C9.5 21 3 12 2 2 Z' fill='url(%23g)' stroke='rgba(70,40,59,0.4)' stroke-width='1'/><path d='M3.5 3.5 Q12 9.5 19 17.5' stroke='rgba(255,255,255,0.65)' stroke-width='0.9' fill='none'/></svg>") 2 2, auto;
+  --cursor-pointer: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23f8a8b4'/><stop offset='1' stop-color='%23e75565'/></linearGradient></defs><path d='M2 2 C12 1.5 20 6 23 13 L20.6 15.4 L23.5 17.5 C24 21 20.5 24.2 16.5 23 C8.5 20.5 3 11.5 2 2 Z' fill='url(%23g)' stroke='rgba(70,40,59,0.45)' stroke-width='1'/><path d='M3.5 3.5 Q12.5 9 19.5 16.5' stroke='rgba(255,255,255,0.7)' stroke-width='0.9' fill='none'/><circle cx='21.5' cy='4' r='1.3' fill='%23fbd3da' stroke='rgba(70,40,59,0.35)' stroke-width='0.6'/></svg>") 2 2, pointer;
+}
+
+/* 默认态铺满全站；可点元素切换可点态（cursor 可继承，容器命中即覆盖子树） */
+html:not([data-cursor='off']) body {
+  cursor: var(--cursor-default);
+}
+html:not([data-cursor='off']) button,
+html:not([data-cursor='off']) a,
+html:not([data-cursor='off']) select,
+html:not([data-cursor='off']) label,
+html:not([data-cursor='off']) input[type='checkbox'],
+html:not([data-cursor='off']) input[type='range'],
+html:not([data-cursor='off']) [role='button'],
+html:not([data-cursor='off']) .cursor-pointer {
+  cursor: var(--cursor-pointer);
+}
+/* 输入区保留系统 I-beam：cursor 是继承属性，必须显式收回来 */
+html:not([data-cursor='off']) input:not([type='checkbox']):not([type='range']),
+html:not([data-cursor='off']) textarea {
+  cursor: auto;
+}
