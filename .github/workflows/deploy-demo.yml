@@ -1,13 +1,21 @@
-# 网页演示版 → GitHub Pages
+# 网页演示版 —— 构建 + 产物防漂移门禁
 #
-# 一次性前置操作（只有仓库 owner 能做，CI 代替不了）：
-#   Settings → Pages → Build and deployment → Source 选 “GitHub Actions”
-# 没选之前这个 workflow 会在 deploy 步骤报 “Pages site not found”。
+# 当前发布方式：Pages 的 Source 是「Deploy from a branch: main / (root)」，
+# 所以仓库根目录的 index.html + assets/ 就是线上页面（由 scripts/sync-pages.mjs 同步进来，
+# 清单在 .pages-manifest）。GitHub 自带的 pages-build-deployment 负责发布，这里不碰部署。
 #
-# 上线地址：https://<用户名>.github.io/<仓库名>/
-# 页面用的是 base: './' + HashRouter，子路径直接可用，不需要任何 rewrite 规则。
+# 这个 workflow 只干一件事，但是很关键的一件：
+#   把 src 重新构建一遍，逐字节比对根目录产物是否与之一致。
+# 产物入库最大的风险是「改了 src 忘了同步 ⇒ 线上悄悄跑着旧版本」，
+# 这类问题不报错、没人发现。所以必须有人主动核对，这里就是那个人。
+#
+# 忘同步的修法：npm run deploy:pages 然后提交推送。
+#
+# 想换成真正的 Actions 部署（产物不入库、推完自动上线）：
+#   Settings → Pages → Source 改成 "GitHub Actions"，
+#   然后把下面 deploy job 的注释解开、去掉 check 步骤即可。
 
-name: 部署网页演示版
+name: 网页演示版构建校验
 
 on:
   push:
@@ -16,24 +24,20 @@ on:
       - 'electron2/src/**'
       - 'electron2/web/**'
       - 'electron2/vite.web.config.ts'
-      - 'electron2/scripts/finalize-web.mjs'
+      - 'electron2/scripts/**'
       - 'electron2/package.json'
       - 'electron2/tailwind.config.ts'
+      - 'index.html'
+      - 'assets/**'
+      - '.pages-manifest'
       - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-# 同时只跑一个部署；新的推上来就把排队中的那个顶掉（不打断正在跑的）
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,34 +47,43 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # 本机默认 node 是 v16，Vite 6 在那上面会挂在 crypto.getRandomValues 上。
+          # 本机默认 node 是 v16，Vite 6 在那上面会死在 crypto.getRandomValues 上。
           # CI 固定 20，别跟着本机默认版本漂。
           node-version: '20'
           cache: npm
           cache-dependency-path: electron2/package-lock.json
 
       # --ignore-scripts 跳过 better-sqlite3 的原生编译：
-      # 那是 Electron 主进程用的，网页版整个 bundle 里没有它，
-      # 在 CI 上编译一遍纯属白等好几分钟（还可能因为工具链差异直接失败）。
+      # 那是 Electron 主进程用的，网页版 bundle 里没有它，
+      # 在 CI 上编译一遍纯属白等（还可能因工具链差异直接失败）。
       - run: npm ci --ignore-scripts
 
       - run: npm run typecheck
 
-      # build:web 自带产物门禁（scripts/finalize-web.mjs）：
-      # 缺 index.html / 缺 css / js 明显偏小都会让这一步非零退出，
-      # 不会把一个白屏的壳子推上线。
-      - run: npm run build:web
+      # 构建 → 与仓库根目录已发布的产物逐字节比对。
+      # build:web 自带产物门禁（缺 index.html / 缺 css / js 明显偏小都会红），
+      # sync-pages --check 再管「线上是不是最新」。
+      - run: npm run check:pages
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: electron2/dist-web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+# ---- 若日后把 Pages Source 换成 "GitHub Actions"，用下面这段替换上面的 check 步骤 ----
+#
+#  build:
+#    runs-on: ubuntu-latest
+#    defaults: { run: { working-directory: electron2 } }
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: actions/setup-node@v4
+#        with: { node-version: '20', cache: npm, cache-dependency-path: electron2/package-lock.json }
+#      - run: npm ci --ignore-scripts
+#      - run: npm run typecheck
+#      - run: npm run build:web
+#      - uses: actions/upload-pages-artifact@v3
+#        with: { path: electron2/dist-web }
+#  deploy:
+#    needs: build
+#    runs-on: ubuntu-latest
+#    permissions: { pages: write, id-token: write }
+#    environment: { name: github-pages, url: '${{ steps.deployment.outputs.page_url }}' }
+#    steps:
+#      - id: deployment
+#        uses: actions/deploy-pages@v4

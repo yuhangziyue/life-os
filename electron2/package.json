@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "dev:web": "vite --config vite.web.config.ts",
     "build:web": "vite build --config vite.web.config.ts && node scripts/finalize-web.mjs",
+    "deploy:pages": "npm run build:web && node scripts/sync-pages.mjs",
+    "check:pages": "npm run build:web && node scripts/sync-pages.mjs --check",
     "preview:web": "vite preview --config vite.web.config.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "./e2e/run.sh dev",
