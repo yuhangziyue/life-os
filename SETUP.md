@@ -64,9 +64,6 @@
 ```
 life-os/
 ├── SETUP.md                ← 本文件
-├── design/                 ← 产品设计文档
-│   ├── 01-product-modules-and-interfaces.md
-│   └── 02-development-plan.md
 ├── LifeOS/                 ← 主应用代码（35 个 Swift 文件）
 │   ├── App/                ← 入口 + 菜单栏
 │   ├── Models/             ← 5 个数据模型

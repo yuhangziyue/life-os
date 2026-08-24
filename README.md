@@ -55,9 +55,11 @@ electron2/          唯一活线：Electron + React 实现
   electron/         主进程：窗口、菜单、SQLite、迁移与备份
   src/              渲染进程：页面 / 组件 / 引擎 / 内容文案
   e2e/              三档操作测试
-design/             产品与工程文档（03 为当前状态，02 已废弃）
+  web/              网页演示版入口（见 electron2/WEB-DEMO.md）
 LifeOSTests/        早期 SwiftUI 方案遗留，已放弃，未构建成功过
 ```
+
+产品设计文档不在本仓库，维护在作者本机的需求中央源里。
 
 ## 状态
 
