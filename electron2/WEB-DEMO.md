@@ -96,9 +96,39 @@ score = initialScore + Σ(近 30 天内 action.impact) × 0.2      clamp[0,10]
 
 ## 部署
 
-`.github/workflows/deploy-demo.yml`，推 main 自动构建部署。
+**线上地址：https://yuhangziyue.github.io/life-os/**
 
-**一次性前置操作**（只有仓库 owner 能做）：Settings → Pages → Source 选 `GitHub Actions`。
-没选之前 deploy 步骤会报 `Pages site not found`。
+Pages 的 Source 是 **GitHub Actions**，发布权在 `.github/workflows/deploy-demo.yml` 手里。
+推 main（且改动命中 workflow 的 paths）就自动构建部署，约 1~2 分钟上线。
+`dist-web/` 不入库——编译产物入库必然与源码漂移。
 
-`dist-web/` 不入库（`.gitignore` 已加）——编译产物入库必然与源码漂移。
+手动触发：Actions 页面 → 「部署网页演示版」→ Run workflow。
+
+### 判断 Source 是哪一种（踩过一次，记下来）
+
+Pages 有两种发布源，**只有仓库 owner 能在 Settings 里改，API token 之外的手段都改不了**：
+
+| Source | 谁负责发布 | 识别方法 |
+|---|---|---|
+| `GitHub Actions` | 本仓库的 workflow | 推 main 后**只有**自己的 workflow 跑 |
+| `Deploy from a branch` | GitHub 内置 `pages build and deployment` | 推 main 后 Actions 里会多出这条内置记录 |
+
+2026-08-24 在这里判断错过一次：看到线上是 README 的 Jekyll 渲染页，就认定
+Source 是 `main/(root)`，于是把 workflow 改成「只校验不部署」+ 把产物同步进仓库根，
+想蹭分支模式免设置发布。结果**没有任何东西负责发布**，线上停在旧版、`/assets/*.js` 全 404。
+
+真相是 Source 已经被改成 `GitHub Actions`，判据是**内置部署对新提交完全不再触发**
+（分支模式下它必触发）。教训：**改发布链之前先确认发布源是谁，别从页面长相反推。**
+
+### 分支模式的后备工具
+
+万一以后 Source 改回 `Deploy from a branch: main / (root)`，
+仓库根目录必须真的有 `index.html`，用这条命令同步：
+
+```bash
+npm run deploy:pages     # 构建 + 把产物复制到仓库根，写 .pages-manifest
+npm run check:pages      # 校验根目录产物与当前 src 一致（防「改了 src 忘同步」）
+```
+
+删除按 `.pages-manifest` 清单走，不按名字猜——猜的话哪天根目录多个同名 `assets/` 就会误删。
+当前走 Actions 部署，所以根目录**不应该**有这些产物（有就是两份会漂移的副本）。

@@ -1,7 +1,0 @@
-# GitHub Pages 发布产物清单 —— 由 electron2/scripts/sync-pages.mjs 生成，不要手改。
-# 这些文件是 electron2/dist-web/ 的副本，放在仓库根供 Pages(main/root) 直接发布。
-# 改了 src 之后要重新 npm run deploy:pages，否则 CI 会因产物漂移而红。
-.nojekyll
-assets/index-BIU6FzUJ.js
-assets/index-BsU_m_s2.css
-index.html
