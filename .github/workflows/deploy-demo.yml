@@ -1,21 +1,18 @@
-# 网页演示版 —— 构建 + 产物防漂移门禁
+# 网页演示版 → GitHub Pages（Source = GitHub Actions）
 #
-# 当前发布方式：Pages 的 Source 是「Deploy from a branch: main / (root)」，
-# 所以仓库根目录的 index.html + assets/ 就是线上页面（由 scripts/sync-pages.mjs 同步进来，
-# 清单在 .pages-manifest）。GitHub 自带的 pages-build-deployment 负责发布，这里不碰部署。
+# 事实记录（2026-08-24，别再改错方向）：
+# Pages 的 Source 已经是 "GitHub Actions"。判据是内置的 pages-build-deployment
+# 对新推的提交**完全不再触发**（分支模式下它必触发，11:12 那次就触发过），
+# 等了 7 分钟零记录。所以发布权在这个 workflow 手里，不在分支上。
 #
-# 这个 workflow 只干一件事，但是很关键的一件：
-#   把 src 重新构建一遍，逐字节比对根目录产物是否与之一致。
-# 产物入库最大的风险是「改了 src 忘了同步 ⇒ 线上悄悄跑着旧版本」，
-# 这类问题不报错、没人发现。所以必须有人主动核对，这里就是那个人。
+# 曾经走错的一版：把这里改成「只做产物校验、不部署」，同时把构建产物同步进仓库根，
+# 想蹭分支模式免设置发布。结果是**没有任何东西负责发布**，线上停在旧版本，
+# /assets/*.js 全 404。教训是：改发布链之前先确认发布源是谁，别靠猜。
 #
-# 忘同步的修法：npm run deploy:pages 然后提交推送。
-#
-# 想换成真正的 Actions 部署（产物不入库、推完自动上线）：
-#   Settings → Pages → Source 改成 "GitHub Actions"，
-#   然后把下面 deploy job 的注释解开、去掉 check 步骤即可。
+# 上线地址：https://yuhangziyue.github.io/life-os/
+# 页面是 base: './' + HashRouter，子路径直接可用，不需要任何 rewrite 规则。
 
-name: 网页演示版构建校验
+name: 部署网页演示版
 
 on:
   push:
@@ -27,17 +24,20 @@ on:
       - 'electron2/scripts/**'
       - 'electron2/package.json'
       - 'electron2/tailwind.config.ts'
-      - 'index.html'
-      - 'assets/**'
-      - '.pages-manifest'
       - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  verify:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,37 +53,27 @@ jobs:
           cache: npm
           cache-dependency-path: electron2/package-lock.json
 
-      # --ignore-scripts 跳过 better-sqlite3 的原生编译：
-      # 那是 Electron 主进程用的，网页版 bundle 里没有它，
-      # 在 CI 上编译一遍纯属白等（还可能因工具链差异直接失败）。
+      # --ignore-scripts 跳过 better-sqlite3 的原生编译：那是 Electron 主进程用的，
+      # 网页版 bundle 里没有它，在 CI 上编译一遍纯属白等（还可能因工具链差异直接失败）。
       - run: npm ci --ignore-scripts
 
       - run: npm run typecheck
 
-      # 构建 → 与仓库根目录已发布的产物逐字节比对。
-      # build:web 自带产物门禁（缺 index.html / 缺 css / js 明显偏小都会红），
-      # sync-pages --check 再管「线上是不是最新」。
-      - run: npm run check:pages
+      # build:web 自带产物门禁（scripts/finalize-web.mjs）：
+      # 缺 index.html / 缺 css / js 明显偏小都会让这一步非零退出，
+      # 不会把一个白屏的壳子推上线。
+      - run: npm run build:web
 
-# ---- 若日后把 Pages Source 换成 "GitHub Actions"，用下面这段替换上面的 check 步骤 ----
-#
-#  build:
-#    runs-on: ubuntu-latest
-#    defaults: { run: { working-directory: electron2 } }
-#    steps:
-#      - uses: actions/checkout@v4
-#      - uses: actions/setup-node@v4
-#        with: { node-version: '20', cache: npm, cache-dependency-path: electron2/package-lock.json }
-#      - run: npm ci --ignore-scripts
-#      - run: npm run typecheck
-#      - run: npm run build:web
-#      - uses: actions/upload-pages-artifact@v3
-#        with: { path: electron2/dist-web }
-#  deploy:
-#    needs: build
-#    runs-on: ubuntu-latest
-#    permissions: { pages: write, id-token: write }
-#    environment: { name: github-pages, url: '${{ steps.deployment.outputs.page_url }}' }
-#    steps:
-#      - id: deployment
-#        uses: actions/deploy-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: electron2/dist-web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
