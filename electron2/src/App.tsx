@@ -5,6 +5,7 @@ import { applyTheme } from './services/theme'
 import { applyCursorSetting } from './services/ambience'
 import { getSetting } from './db'
 import { Sidebar } from './components/Sidebar'
+import { TabBar } from './components/TabBar'
 import { QuickAddPanel } from './components/QuickAddPanel'
 import { MenuBridge } from './components/MenuBridge'
 import { EchoToast } from './components/EchoToast'
@@ -12,7 +13,8 @@ import { PetalBackdrop } from './components/PetalBackdrop'
 import { PetalTrail } from './components/PetalTrail'
 import { Onboarding } from './components/Onboarding'
 import { QuarterlyTalk } from './components/QuarterlyTalk'
-import { Dashboard } from './pages/Dashboard'
+import { Garden } from './pages/Garden'
+import { Today } from './pages/Today'
 import { Dimensions } from './pages/Dimensions'
 import { DimensionDetail } from './pages/DimensionDetail'
 import { Actions } from './pages/Actions'
@@ -150,7 +152,15 @@ export default function App() {
           />
           <PetalBackdrop />
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            {/* 三入口（v3.5）：花 / 今天 / 我。
+                其余路由全部保留，只是从导航层降到场景内部：
+                  花 → 细看数据(/stats) · 周对账(/review) · 点花瓣(/dimensions/:id)
+                  今天 → 全部记录(/actions)
+                  我 → 花语(/handbook)
+                /settings 与 /me 是同一页 —— 菜单桥与既有 e2e 都还指着 /settings。 */}
+            <Route path="/" element={<Garden />} />
+            <Route path="/today" element={<Today />} />
+            <Route path="/me" element={<Settings />} />
             <Route path="/dimensions" element={<Dimensions />} />
             <Route path="/dimensions/:id" element={<DimensionDetail />} />
             <Route path="/actions" element={<Actions />} />
@@ -160,6 +170,8 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
+        {/* 窄屏才出底栏 + FAB（CSS 控制显隐，不做 JS 断点判断，避免首帧闪烁） */}
+        <TabBar />
         <QuickAddPanel open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
         <EchoToast />
         <PetalTrail />

@@ -1,0 +1,16 @@
+{
+  "name": "生命之花 · Life-OS",
+  "short_name": "生命之花",
+  "description": "八片花瓣，你只能让其中两三片盛开。这个软件帮你看清你选了哪几片、代价是什么。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

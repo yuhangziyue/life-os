@@ -30,6 +30,12 @@ interface FlowerChartProps {
   spotlightId?: string
   /** 覆盖分数（会谈/引导打分预览用） */
   scoreOverride?: Record<string, number>
+  /**
+   * 花瓣可点（v3.5 M7）：点一片花瓣 → 该维度面板。
+   * 主视觉同时是导航 —— 这是「维度管理」那一栏能被删掉的原因。
+   * 用真实 <button> 叠在 canvas 上而不是做 canvas 命中测试：可聚焦、可读屏、可键盘操作。
+   */
+  petalLinkable?: boolean
 }
 
 /** 花瓣路径：两段三次贝塞尔围成的闭合叶形（沿 +x 方向），与金边共用同一条形状 */
@@ -42,8 +48,9 @@ function petalPath(ctx: CanvasRenderingContext2D, len: number, halfW: number) {
 }
 
 export function FlowerChart({
-  dimensions, actions, size = 340, focusPreview, spotlightId, scoreOverride,
+  dimensions, actions, size = 340, focusPreview, spotlightId, scoreOverride, petalLinkable,
 }: FlowerChartProps) {
+  const openDimensionSheet = useStore(s => s.openDimensionSheet)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const focusRef = useRef<HTMLCanvasElement>(null)
   const theme = useStore(s => s.theme) // 依赖主题：切主题时用新 token 重绘
@@ -207,6 +214,27 @@ export function FlowerChart({
         className="focus-breathe"
         style={{ width: size, height: size, position: 'absolute', inset: 0, pointerEvents: 'none' }}
       />
+      {petalLinkable && dimensions.map((dim, i) => {
+        // 与绘制用的同一条角度公式（(2πi)/count − π/2，花瓣从竖直向上开始顺时针）。
+        // 半径取花瓣中段，热区 44px —— 触控下限。
+        const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
+        const r = size * 0.24
+        return (
+          <button
+            key={dim.id}
+            className="petal-hit"
+            data-testid="petal-hit"
+            data-dimension={dim.name}
+            title={`看看「${dim.name}」`}
+            aria-label={`看看「${dim.name}」`}
+            style={{
+              left: size / 2 + r * Math.cos(angle) - 22,
+              top: size / 2 + r * Math.sin(angle) - 22,
+            }}
+            onClick={() => openDimensionSheet(dim.id)}
+          />
+        )
+      })}
     </div>
   )
 }

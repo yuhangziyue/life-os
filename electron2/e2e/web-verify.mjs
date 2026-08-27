@@ -6,7 +6,8 @@
 //   1. IndexedDB shim 装上了，且用的是 IndexedDB 主路径而不是悄悄降级到内存
 //   2. 八个维度的分数命中 demoSeed 里设计的目标值 —— 证明 impact 配平算对了
 //   3. 写入真的落盘：写一条 → reload → 还在（内存档会在这一步露馅）
-//   4. 七个页面都渲染出内容且零控制台错误
+//   4. 三入口 + 五个二级页都渲染出内容且零控制台错误
+//   5. v3.4/v3.5：持久化申请（A1）/ 存储真相（A3）/ manifest（A2）/ 窄屏三入口形态
 
 import { spawn } from 'node:child_process'
 import http from 'node:http'
@@ -82,6 +83,26 @@ try {
   }
   check('React 挂载 + 首屏渲染', ready)
 
+  // 幂等清场：IndexedDB 是**真的持久**的，上一轮留下的持久化探针会一直躺在库里，
+  // 每轮把「职业发展」顶高 0.2 分 —— 于是「分数命中 demoSeed 设计值」会随运行次数漂移失败。
+  // 这不是产品 bug，是这个脚本自己造的垃圾没收。清掉后重载，让 loadData 重算一遍分数。
+  const stale = await page.eval(`
+    const a = window.electronAPI
+    const rows = await a.dbActionsGetAll()
+    const junk = rows.filter(r => r.id === 'verify-persist-probe' || String(r.description || '').includes('持久化探针'))
+    for (const r of junk) await a.dbActionsDelete(r.id)
+    return junk.length`)
+  if (stale > 0) {
+    await sleep(400)
+    await page.send('Page.reload', { ignoreCache: false })
+    await sleep(2500)
+    for (let i = 0; i < 30; i++) {
+      if (await page.eval('return !!window.electronAPI')) break
+      await sleep(200)
+    }
+  }
+  check('清掉上一轮遗留的探针（保证本轮可重复）', true, stale > 0 ? `清了 ${stale} 条` : '无遗留')
+
   // ---- 1. shim 装上了，且没有悄悄降级 ----
   const ping = await page.eval('return window.electronAPI?.ping?.() ?? "(缺失)"')
   check('window.electronAPI 由 web shim 提供', ping === 'pong from web adapter', ping)
@@ -144,8 +165,9 @@ try {
 
   // ---- 4. 七个页面逐个渲染 + 截图 ----
   const PAGES = [
-    ['', '首页-仪表盘'], ['#/dimensions', '维度列表'], ['#/actions', '行动记录'],
-    ['#/stats', '统计分析'], ['#/review', '复盘'], ['#/handbook', '手册'], ['#/settings', '设置'],
+    ['', '花'], ['#/today', '今天'], ['#/me', '我'],
+    ['#/dimensions', '维度列表'], ['#/actions', '行动记录'],
+    ['#/stats', '细看数据'], ['#/review', '周对账'], ['#/handbook', '花语'],
   ]
   for (const [hash, label] of PAGES) {
     await page.eval(`location.hash = ${JSON.stringify(hash)}; return 1`)
@@ -179,6 +201,95 @@ try {
     const rows = await window.electronAPI.dbActionsGetAll()
     return rows.some(r => r.id === 'verify-persist-probe')`)
   check('写入刷新后仍在（IndexedDB 真落盘）', survived === true, survived ? '' : '刷新后丢失 —— 疑似降级到内存档')
+
+  // 收自己的垃圾：探针留在库里会把下一轮的分数断言顶偏
+  await page.eval(`
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows.filter(x => x.id === 'verify-persist-probe')) {
+      await window.electronAPI.dbActionsDelete(r.id)
+    }
+    return 1`)
+  await sleep(400)
+
+  // ---- v3.5 / v3.4：三入口 · 存储真相 · PWA ----
+  //
+  // 网页版是本轮的分发主线，所以这三件事在这里必须被真的验一遍：
+  //   ① 三入口在窄屏成立（小红书来的人 90% 用手机）
+  //   ② 存储真相如实呈现（A3）—— 账本会丢这件事不许含糊
+  //   ③ 持久化申请真的发了（A1）+ manifest 真的能被解析（A2）
+  await page.eval(`location.hash = ''; return 1`)
+  await sleep(900)
+
+  const persisted = await page.eval(`
+    const w = window.__lifeosWeb
+    if (!w) return { present: false }
+    const api = !!(navigator.storage && navigator.storage.persist)
+    return { present: true, kind: w.kind, persisted: w.persisted, api, standalone: w.standalone }
+  `)
+  check('存储状态已初始化并挂在 window.__lifeosWeb（A1）', persisted.present === true, JSON.stringify(persisted))
+  check('走 IndexedDB 且已发出持久化申请', persisted.kind === 'indexeddb' && persisted.persisted !== null,
+        `kind=${persisted.kind} persisted=${persisted.persisted}`)
+
+  const truth = await page.eval(`
+    location.hash = '#/me'
+    await new Promise(r => setTimeout(r, 900))
+    const el = document.querySelector('[data-testid="storage-truth"]')
+    const about = document.querySelector('[data-testid="about-section"]')?.innerText || ''
+    return {
+      shown: !!el,
+      text: el?.innerText || '',
+      meta: document.querySelector('[data-testid="storage-meta"]')?.innerText || '',
+      aboutMentionsSqlite: /SQLite/i.test(about),
+    }
+  `)
+  check('「我」页给出存储真相（A3）', truth.shown === true)
+  check('明说「清缓存会一并清掉」——不承诺做不到的事',
+        /清缓存|清理缓存/.test(truth.text) && /清掉/.test(truth.text),
+        truth.text.replace(/\n/g, ' / ').slice(0, 100))
+  check('如实报出存储层与持久化状态', /IndexedDB|indexeddb/.test(truth.meta), truth.meta)
+  check('网页版「关于」不再照抄桌面版的 SQLite 承诺', truth.aboutMentionsSqlite === false,
+        truth.aboutMentionsSqlite ? '仍在承诺 SQLite 文件' : '')
+  await page.shot(path.join(SHOTS, '我-存储真相.png'))
+
+  const pwa = await page.eval(`
+    const link = document.querySelector('link[rel="manifest"]')
+    if (!link) return { linked: false }
+    const res = await fetch(link.getAttribute('href'))
+    const mf = await res.json()
+    return { linked: true, ok: res.ok, name: mf.name, display: mf.display, icons: (mf.icons||[]).length, start: mf.start_url }
+  `)
+  check('manifest 被引用且可解析（A2）', pwa.linked && pwa.ok && pwa.display === 'standalone',
+        JSON.stringify(pwa))
+
+  // 窄屏形态：底栏三入口 + FAB
+  await page.send('Emulation.setDeviceMetricsOverride',
+    { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
+  await page.eval(`location.hash = ''; return 1`)
+  await sleep(1000)
+  const mobile = await page.eval(`
+    const vis = el => !!el && getComputedStyle(el).display !== 'none'
+    const bar = document.querySelector('[data-testid="mobile-tabbar"]')
+    return {
+      tabs: bar ? bar.querySelectorAll('a').length : 0,
+      barVisible: vis(bar),
+      fabVisible: vis(document.querySelector('[data-testid="mobile-fab"]')),
+      asideHidden: !vis(document.querySelector('aside')),
+      noSideScroll: document.documentElement.scrollWidth <= window.innerWidth + 1,
+    }
+  `)
+  check('手机尺寸下出底栏三入口 + FAB', mobile.barVisible && mobile.tabs === 3 && mobile.fabVisible,
+        JSON.stringify(mobile))
+  check('手机尺寸下侧栏收起且页面不横向溢出', mobile.asideHidden && mobile.noSideScroll, JSON.stringify(mobile))
+  await page.shot(path.join(SHOTS, '手机-花.png'))
+  await page.eval(`location.hash = '#/today'; return 1`)
+  await sleep(900)
+  await page.shot(path.join(SHOTS, '手机-今天.png'))
+  await page.eval(`location.hash = '#/me'; return 1`)
+  await sleep(900)
+  await page.shot(path.join(SHOTS, '手机-我.png'))
+  await page.send('Emulation.clearDeviceMetricsOverride')
+  await page.eval(`location.hash = ''; return 1`)
+  await sleep(700)
 
   // ---- 演示浮标在位 ----
   const badge = await page.eval(`

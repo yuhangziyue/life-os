@@ -10,6 +10,7 @@ import App from './App'
 import './styles/globals.css'
 import { createWebBackend, storageLabel } from './db/webAdapter'
 import { buildDemoSnapshot } from './db/demoSeed'
+import { initWebStorageStatus } from './services/storage'
 
 window.addEventListener('error', e => console.error('[未捕获错误]', e.message, e.error))
 window.addEventListener('unhandledrejection', e => console.error('[未处理的 Promise]', e.reason))
@@ -20,6 +21,12 @@ if (!rootEl) throw new Error('#root 未找到，index.web.html 可能被改坏�
 async function boot() {
   const backend = await createWebBackend({ seed: buildDemoSnapshot })
   window.electronAPI = backend.api
+
+  // 存储持久化（v3.4 A1）—— 必须在挂 React 之前拿到结果：
+  // 「我」页要如实显示是否获批，界面上不许出现「读取中…」这种含糊态。
+  // 一个 API 调用换来 Chrome/Edge 的持久配额（不再被存储压力驱逐）；
+  // Safari 上必然 false，那里唯一的办法是「添加到主屏幕」，文案会照实说。
+  await initWebStorageStatus(backend.storageKind)
 
   // 页面隐藏时强制落盘：写入是攒到微任务末尾批量做的，
   // 用户点完「记一笔」立刻关标签页的话，不 flush 就丢那一笔。
@@ -51,7 +58,8 @@ function mountDemoBadge(kind: Parameters<typeof storageLabel>[0]) {
       <p><strong>生命之花 · Life-OS</strong> 的网页演示版。</p>
       <p>数据只存在你这台设备的浏览器里（${storageLabel(kind)}），
          不上传任何服务器，随便点、随便改。</p>
-      <p>桌面正式版用的是本地 SQLite 文件，可导出备份。</p>
+      <p><strong>浏览器清缓存会一并清掉它</strong>——
+         想留着就去「我 → 我的数据」导出一份，那里也写清了怎么让它更稳。</p>
       <button id="demo-reset">恢复演示数据</button>
     </div>`
   document.body.appendChild(wrap)

@@ -14,6 +14,7 @@ import {
 import { loadAmbience, saveAmbience, applyCursorSetting, type Ambience } from '../services/ambience'
 import { calculateScore, overallScore, coveredDimensions, startOfToday } from '../engine/scoring'
 import { composeEcho, composeCompleteEcho, type Echo } from '../engine/echo'
+import { composeLightShift, LIGHT_LAW_SEEN_KEY, type LightShift } from '../engine/lightShift'
 import { loadAIConfig, saveAIConfig, testConnection } from '../services/ai'
 import { loadTheme, type ThemeId } from '../services/theme'
 import { DEFAULT_RUBRICS } from '../models/dimension'
@@ -63,6 +64,12 @@ interface AppState {
 
   theme: ThemeId
   echo: Echo | null
+  /** 「光的分配」Aha（v3.5 M5）：与 echo 同时产生，两者一起构成记录后的那一屏 */
+  aha: LightShift | null
+  /** 那条「总和恒为 100%」的解释是否已经说过（说一次就够） */
+  ahaLawSeen: boolean
+  /** 点花瓣弹出的维度面板（v3.5 M7）；null = 没开。花瓣即导航，取代了「维度管理」那一栏 */
+  dimensionSheetId: string | null
 
   ambience: Ambience
   onboardingOpen: boolean
@@ -85,6 +92,9 @@ interface AppState {
   setSelectedDate: (date: number) => void
   setTheme: (theme: ThemeId) => void
   clearEcho: () => void
+  markAhaLawSeen: () => Promise<void>
+  openDimensionSheet: (id: string) => void
+  closeDimensionSheet: () => void
   setAmbience: (partial: Partial<Ambience>) => void
   setOnboardingOpen: (open: boolean) => void
   /** 完成首启引导：写入亲手打的初始分 → 记 done → 花苞绽放交给组件动画 */
@@ -147,6 +157,9 @@ export const useStore = create<AppState>((set, get) => ({
   selectedDate: startOfToday(),
   theme: loadTheme(),
   echo: null,
+  aha: null,
+  ahaLawSeen: false,
+  dimensionSheetId: null,
   ambience: loadAmbience(),
   onboardingOpen: false,
   quarterlyReviews: [],
@@ -168,7 +181,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Step 2: 并行加载所有数据
       LOG('loadData', 'Step 2: 并行加载数据...')
-      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount] = await Promise.all([
+      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen] = await Promise.all([
         getDimensions(),
         getScoreRubrics(),
         getBranches(),
@@ -178,6 +191,7 @@ export const useStore = create<AppState>((set, get) => ({
         getQuarterlyReviews(),
         getSetting('quarterlyDeferUntil'),
         getSetting('quarterlyDeferCount'),
+        getSetting(LIGHT_LAW_SEEN_KEY),
       ])
       LOG('loadData', `Step 2: 完成 - dims=${dimensions.length}, rubrics=${scoreRubrics.length}, branches=${branches.length}, goals=${goals.length}, actions=${actions.length}, reviews=${reviews.length}`)
 
@@ -202,6 +216,7 @@ export const useStore = create<AppState>((set, get) => ({
         reviews,
         quarterlyReviews,
         quarterlyDefer: { until: Number(deferUntil) || 0, count: Number(deferCount) || 0 },
+        ahaLawSeen: lawSeen === '1',
         isLoading: false,
         loadError: null,
       })
@@ -223,7 +238,17 @@ export const useStore = create<AppState>((set, get) => ({
   openQuickAddWith: (dimensionId) => set({ quickAddOpen: true, quickAddPreset: dimensionId }),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setTheme: (theme) => set({ theme }),
-  clearEcho: () => set({ echo: null }),
+  clearEcho: () => set({ echo: null, aha: null }),
+
+  openDimensionSheet: (id) => set({ dimensionSheetId: id }),
+  closeDimensionSheet: () => set({ dimensionSheetId: null }),
+
+  /** 那条「总和恒为 100%」的解释已经说过了，落库，永不再出现 */
+  markAhaLawSeen: async () => {
+    if (get().ahaLawSeen) return
+    set({ ahaLawSeen: true })
+    try { await setSetting(LIGHT_LAW_SEEN_KEY, '1') } catch { /* 记不住比说两次好，不挡路径 */ }
+  },
 
   setAmbience: (partial) => {
     const next = { ...get().ambience, ...partial }
@@ -398,9 +423,12 @@ export const useStore = create<AppState>((set, get) => ({
         })
       : null
 
+    // 「光的分配」（v3.5 M5）：同样必须用写入前的 actions 算 —— 它要的正是「之前 vs 之后」的差
+    const aha = composeLightShift({ dimensions, actionsBefore: actions, added: newAction })
+
     await addAction(newAction)
     await get().loadData()
-    if (echo) set({ echo })
+    if (echo || aha) set({ echo, aha })
   },
 
   updateAction: async (id, data) => {
@@ -413,7 +441,9 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (justCompleted && prev) {
       const dim = get().dimensions.find(d => d.id === prev.dimensionId)
-      if (dim) set({ echo: composeCompleteEcho(dim, prev.descriptionText) })
+      // 把一条既有记录勾成完成，光的分配确实变了；但这条路径上没有「刚写进去的那条」
+      // 可供对照，所以只给回响、不给 Aha（宁可不演，不演错）
+      if (dim) set({ echo: composeCompleteEcho(dim, prev.descriptionText), aha: null })
     }
   },
 

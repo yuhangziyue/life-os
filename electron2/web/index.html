@@ -2,14 +2,32 @@
 <html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>生命之花 · Life-OS · 网页演示版</title>
-    <meta name="description" content="基于生命之花的八维度人生管理系统 —— 网页演示版，数据只存在你的浏览器里。" />
+    <!-- viewport-fit=cover：底栏要用 env(safe-area-inset-bottom)，不加这个 iPhone 上拿到的永远是 0 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>生命之花 · Life-OS · 网页版</title>
+    <meta name="description" content="八片花瓣，你只能让其中两三片盛开。这个软件帮你看清你选了哪几片、代价是什么。数据只存在你的浏览器里。" />
     <!-- 演示站不希望被搜索引擎收录（它带的是样板数据，不是真内容） -->
     <meta name="robots" content="noindex" />
+
+    <!--
+      PWA（v3.4 A2）—— 目的不是「做一个移动 App」，是**拿到存储持久性**：
+      Safari 对未添加到主屏的站点有 7 天不访问即清 IndexedDB 的策略，
+      而这是一个 84 天才结算一次的产品，用户完全可能在一个周期内被清空账本。
+      添加到主屏之后它是独立应用，那条清除策略不适用。
+    -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#0d0d0d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="生命之花" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" href="./icon-192.png" />
+
     <style>
       /* React 挂载前先把底色铺上，避免开页瞬间闪白 */
       body { margin: 0; background: #0d0d0d; }
+      /* 移动端双击缩放会让点花瓣变成缩放，记录路径每一击都要算数 */
+      html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
     </style>
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased">

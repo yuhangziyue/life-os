@@ -26,6 +26,25 @@ if (scriptSrcs.length === 0) fail('index.html 里没有任何 <script src>，入
 const absolute = scriptSrcs.filter(s => s.startsWith('/'))
 if (absolute.length) fail(`入口脚本是绝对路径 ${absolute.join(', ')}，子路径托管会 404（检查 base 配置）`)
 
+// PWA 三件套（v3.4 A2）。它们不是装饰 ——
+// 「添加到主屏幕」是 Safari 上**唯一**能让 IndexedDB 免于 7 天清除的途径，
+// 而这是个 84 天才结算一次的产品：manifest 缺了，用户的账本就可能在周期内被清空。
+// vite 的 publicDir 静默失败时（比如目录被挪走）产物照样退出码 0，所以必须硬核一遍。
+for (const f of ['manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
+  if (!existsSync(join(out, f))) fail(`缺少 PWA 资源 ${f} —— 添加到主屏拿不到存储持久性（A2）`)
+}
+if (!html.includes('rel="manifest"')) fail('index.html 没有引 manifest，浏览器不会认为它可安装')
+try {
+  const mf = JSON.parse(readFileSync(join(out, 'manifest.webmanifest'), 'utf8'))
+  if (mf.display !== 'standalone') fail(`manifest.display=${mf.display}，必须是 standalone 才算独立应用`)
+  if (!Array.isArray(mf.icons) || mf.icons.length === 0) fail('manifest 里没有 icons')
+  // start_url 必须是相对的：Pages 子路径下写成 "/" 会跳到域名根，装出来的应用打不开
+  if (!String(mf.start_url || '').startsWith('.')) fail(`manifest.start_url=${mf.start_url} 不是相对路径`)
+} catch (e) {
+  if (e?.message?.startsWith('✗')) throw e
+  fail(`manifest.webmanifest 解析失败：${e.message}`)
+}
+
 const assetsDir = join(out, 'assets')
 if (!existsSync(assetsDir)) fail('缺少 assets/ 目录')
 const assets = readdirSync(assetsDir)
@@ -49,4 +68,5 @@ console.log(`  index.html   ${(html.length / 1024).toFixed(1)}KB`)
 console.log(`  js  × ${js.length}      ${(jsBytes / 1024).toFixed(0)}KB`)
 console.log(`  css × ${css.length}      ${(cssBytes / 1024).toFixed(0)}KB`)
 console.log(`  合计         ${totalKB.toFixed(0)}KB`)
+console.log(`  PWA          manifest + 3 图标已就位`)
 console.log(`  .nojekyll    已写入\n`)

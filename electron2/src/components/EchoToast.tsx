@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
+import { LightShiftAha } from './LightShiftAha'
 
 /**
  * 行动回响（P0-11）—— 每次记录/完成后的温暖反馈：
@@ -8,15 +10,25 @@ import { useStore } from '../stores/useStore'
  */
 export function EchoToast() {
   const echo = useStore(s => s.echo)
+  const aha = useStore(s => s.aha)
   const clearEcho = useStore(s => s.clearEcho)
   const openQuickAddWith = useStore(s => s.openQuickAddWith)
   const dimensions = useStore(s => s.dimensions)
+  const { pathname } = useLocation()
 
   useEffect(() => {
-    if (!echo) return
+    // 「光的分配」是一屏定格，不自动收 —— 它要被读完，不是被瞥见。
+    // 只有退化成角落 toast 的那条路径（勾完成既有记录）才 5 秒自动收起。
+    if (!echo || aha) return
     const timer = setTimeout(clearEcho, 5000)
     return () => clearTimeout(timer)
-  }, [echo, clearEcho])
+  }, [echo, aha, clearEcho])
+
+  // 换页即视为收起：别让一屏定格跟着路由飘到下一个页面上盖着东西
+  useEffect(() => { clearEcho() }, [pathname, clearEcho])
+
+  // 记录路径的反馈面只有一个：有光的分配就走 Aha，不再另开角落 toast
+  if (aha) return <LightShiftAha shift={aha} echo={echo} onClose={clearEcho} />
 
   if (!echo) return null
 

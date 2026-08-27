@@ -8,14 +8,20 @@ import { FlowerLogo } from './FlowerLogo'
  * 花瓣 Logo 落座左上角；图标是单字小印（宋体）；菜单字号 20；
  * 无分隔硬边框，与主面板同一片底色自然过渡；底部每天换一句禅语。
  */
+/**
+ * 三个入口（v3.5 M1）—— 从七项收到三项。
+ *
+ * 被收掉的四项里有三项其实是数据库表摊在界面上（dimensions / actions / reviews），
+ * 一项（维度管理）本身是设计失误：八片花瓣是产品定义，不是用户配置项；
+ * 要看某一维度，正确入口是**点那片花瓣**。主视觉同时是导航。
+ *
+ * 它们的页面全都还在，只是从导航层降到场景内部（花 → 细看数据 / 今天 → 全部记录 / 我 → 花语）。
+ * 🔴 没有第四项，也不要「更多」——一旦出现「更多」，就等于承认三个分不完。
+ */
 const navItems = [
-  { to: '/', icon: '今', label: '每日看板' },
-  { to: '/dimensions', icon: '花', label: '维度管理' },
-  { to: '/actions', icon: '行', label: '行动记录' },
-  { to: '/stats', icon: '观', label: '统计分析' },
-  { to: '/review', icon: '省', label: '回顾反思' },
-  { to: '/handbook', icon: '语', label: '花语手册' },
-  { to: '/settings', icon: '调', label: '设置' },
+  { to: '/', icon: '花', label: '花' },
+  { to: '/today', icon: '今', label: '今天' },
+  { to: '/me', icon: '我', label: '我' },
 ]
 
 // 每日一句，按日期轮换。都是「等花开」的语气，没有一句是催促。
@@ -86,7 +92,7 @@ export function Sidebar() {
             {!collapsed && <span className="zen-nav-label">{item.label}</span>}
             {/* 连续推迟两次后，季度会谈的邀请卡收起，只在入口上留一枚静态小花苞。
                 静态、不闪烁、不带数字——它是一句「我还在这儿」，不是一条未读提醒。 */}
-            {item.to === '/stats' && bud && (
+            {item.to === '/' && bud && (
               <span
                 data-testid="quarterly-bud"
                 title="有一场季度会谈在等你"
@@ -106,7 +112,7 @@ export function Sidebar() {
           <p className="text-[11px] text-[var(--text-muted)] opacity-80" data-testid="companion-days">
             这朵花陪了你 {companionDays} 天
           </p>
-          <p className="text-[10px] text-[var(--text-muted)] opacity-60">Life-OS v3.2</p>
+          <p className="text-[10px] text-[var(--text-muted)] opacity-60">Life-OS v3.5</p>
         </div>
       )}
     </aside>

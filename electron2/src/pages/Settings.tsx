@@ -1,12 +1,28 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../stores/useStore'
+import { Link } from 'react-router-dom'
+import { useStore, useCompanionDays, useEnabledDimensions } from '../stores/useStore'
 import { downloadJSON, downloadCSV, pickAndImportJSON } from '../db/fileTransfer'
 import { THEMES } from '../services/theme'
-import { POSITIONING, APP_VERSION, ABOUT_PROMISES, ABOUT_DISCLAIMER } from '../content/about'
+import { POSITIONING, APP_VERSION, ABOUT_PROMISES, ABOUT_PROMISES_WEB, ABOUT_DISCLAIMER } from '../content/about'
+import { isWebBuild, webStorageStatus, storagePromiseLines } from '../services/storage'
+import { gardenBirth } from '../engine/quarterly'
 
 /** AI 配置入口开关：AI 能力达标（50 条 eval + ≥90% 准确率 + 建议式交互）前不对用户露出 */
 const SHOW_AI_CONFIG = false
 
+/**
+ * 「我」—— 三入口之三（v3.5 M4）。
+ *
+ * 路由上仍是 /settings（也接 /me）—— 页面没有被替换，是被**重新分层**了：
+ *   我是谁（陪伴天数 / 花园生日 / 八瓣身份宣言）
+ *   → 偏好与设置（主题 / 氛围 / 重看引导）
+ *   → 我的数据（导出 / 导入 / 🔴 存储真相 / 清除）
+ *   → 关于（定位 / 承诺 / 不承诺疗效）
+ *
+ * 🔴 存储真相那一段是硬要求（v3.4 A3）：界面简化不能把「数据会丢」一起简化掉。
+ * 网页版与桌面版的承诺**分开写** —— 桌面版说 sqlite 文件路径，网页版必须说清
+ * 「浏览器清缓存会一并清掉」，否则就是照抄一句做不到的话。
+ */
 export function Settings() {
   const theme = useStore(s => s.theme)
   const setTheme = useStore(s => s.setTheme)
@@ -20,6 +36,14 @@ export function Settings() {
   const saveAIConfig = useStore(s => s.saveAIConfig)
   const testAIConnection = useStore(s => s.testAIConnection)
   const loadData = useStore(s => s.loadData)
+
+  const companionDays = useCompanionDays()
+  const dimensions = useEnabledDimensions()
+  const identities = dimensions
+    .filter(d => (d.identity || '').trim())
+    .map(d => ({ name: d.name, identity: d.identity as string, colorHex: d.colorHex }))
+  const birthStr = new Date(gardenBirth(dimensions)).toLocaleDateString('zh-CN')
+  const web = webStorageStatus()
 
   const [apiKeyInput, setApiKeyInput] = useState(aiConfig.apiKey)
   const [showKey, setShowKey] = useState(false)
@@ -59,8 +83,43 @@ export function Settings() {
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl mx-auto p-8 space-y-8">
         <div>
-          <h1 className="text-2xl font-light tracking-wide">设置</h1>
+          <h1 className="text-2xl font-light tracking-wide">我</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-1">偏好与设置 · 我的数据与承诺</p>
         </div>
+
+        {/* 我是谁。没有头像、没有昵称 —— 没有账号就不假装有 */}
+        <div className="card space-y-3" data-testid="identity-card">
+          <h2 className="text-sm font-medium text-[var(--text-secondary)]">这座花园</h2>
+          <div className="flex items-baseline gap-6">
+            <div>
+              <div className="text-2xl font-light text-[var(--accent)]">{companionDays}</div>
+              <div className="text-xs text-[var(--text-muted)] mt-0.5">陪伴天数</div>
+            </div>
+            <div className="text-xs text-[var(--text-muted)] leading-relaxed">
+              花园生日 {birthStr}
+              <br />
+              这个数字永不清零 —— 我们庆祝在场，不惩罚缺席
+            </div>
+          </div>
+          {identities.length > 0 && (
+            <div className="pt-3 border-t border-[var(--border)] space-y-1" data-testid="identity-lines">
+              <p className="text-[11px] text-[var(--text-muted)] tracking-wide">我想成为的样子</p>
+              {identities.map(({ name, identity, colorHex }) => (
+                <p key={name} className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: colorHex }} />
+                  成为{identity}的人
+                  <span className="text-[var(--text-muted)]">· {name}</span>
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 花语：从导航栏降为一个条目 */}
+        <Link to="/handbook" className="drawer-link" data-testid="link-handbook">
+          <span>花语</span>
+          <span className="drawer-hint">五章 · 这朵花是什么、它的语言、它的边界 ›</span>
+        </Link>
 
         {/* 外观主题 */}
         <div className="card space-y-4" data-testid="theme-section">
@@ -252,6 +311,25 @@ export function Settings() {
             </div>
           )}
 
+          {/* 🔴 存储真相（v3.4 A3）。网页版的说法与桌面版不同，绝不照抄 ——
+              桌面版「就是一个 sqlite 文件」，网页版是「浏览器清缓存会清掉」。
+              这不是坏消息，是信任设计：敢把局限写在脸上的工具比含糊承诺"绝对安全"的更可信。 */}
+          {isWebBuild() && web && (
+            <div className="storage-truth" data-testid="storage-truth">
+              {storagePromiseLines(web).map(line => (
+                <p key={line}>{line}</p>
+              ))}
+              <p className="storage-meta" data-testid="storage-meta">
+                存储层 {web.kind}
+                {' · '}持久化 {web.persisted === true ? '已获许可' : web.persisted === false ? '未获许可' : '无从得知'}
+                {web.standalone ? ' · 已作为独立应用运行' : ''}
+                {web.usageMB != null && web.quotaMB != null
+                  ? ` · 已用 ${web.usageMB.toFixed(1)}MB / 可用 ${Math.round(web.quotaMB)}MB`
+                  : ''}
+              </p>
+            </div>
+          )}
+
           <div className="pt-4 border-t border-[var(--border)]">
             <button
               className="btn text-sm text-[var(--danger)]"
@@ -278,13 +356,13 @@ export function Settings() {
           </p>
 
           <div className="space-y-1">
-            {ABOUT_PROMISES.map(p => (
+            {(isWebBuild() ? ABOUT_PROMISES_WEB : ABOUT_PROMISES).map(p => (
               <p key={p} className="text-xs text-[var(--text-muted)] leading-relaxed">· {p}</p>
             ))}
           </div>
 
           <div className="text-xs text-[var(--text-muted)] leading-relaxed">
-            <span>数据文件：</span>
+            <span>{isWebBuild() ? '数据存放：' : '数据文件：'}</span>
             <code className="break-all opacity-80" data-testid="about-db-path">{dbPath || '读取中…'}</code>
           </div>
 

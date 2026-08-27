@@ -9,8 +9,11 @@ interface QuickAddPanelProps {
   onClose: () => void
 }
 
+/** 与 globals.css 的 860px 断点一致。窄屏下面板变成底部半屏 sheet，且不自动聚焦输入框 */
+const NARROW_PX = 860
+
 /**
- * 两击记录（P0-7）：选维度 → 回车即完成。
+ * 两击记录（P0-7 / v3.5 M6）：选维度 → 回车即完成。
  * 描述可留空（自动落成分支名/一件小事）；质量默认「正常」；
  * 记录路径只到二度分支——三度分支留给维度详情页和盘点场景。
  */
@@ -31,6 +34,13 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
   // 二度分支（v3.3 T7，报告 §4.2.2）：默认收起。分支是可选的，
   // 却和维度选择占一样的视觉权重，让面板看起来比实际复杂
   const [branchOpen, setBranchOpen] = useState(false)
+
+  /**
+   * 窄屏形态（v3.5 M6）：底部半屏 sheet + 八宫格，**不自动聚焦输入框**。
+   * 自动弹起键盘会把八宫格顶出视野，「两击完成」当场变成「先收键盘再点」——
+   * 定位 v2.0 的原话：两击记录不是体验优化项，是这产品能否存在的前提。
+   */
+  const narrow = typeof window !== 'undefined' && window.innerWidth <= NARROW_PX
 
   // 「再记一条」带过来的预选维度
   useEffect(() => {
@@ -96,17 +106,15 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={onClose}>
+    <div className="qa-scrim" onClick={onClose}>
       <div className="modal-overlay" />
-      <div
-        className="relative card w-full max-w-md mx-4 animate-fade-in p-6"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="qa-panel card animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="sheet-grip qa-grip" />
         <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">快速记录</h3>
 
         {/* 维度选择。选中态用该维度自己的植物色实心填充——
             原来只是一圈 1px 描边 + 文字变色，在三套主题里都看不出选了哪片花瓣（子曰 2026-08-18） */}
-        <div className="flex flex-wrap gap-2 mb-4" data-testid="qa-dimensions">
+        <div className="qa-dim-grid mb-4" data-testid="qa-dimensions">
           {sortedDimensions.map(({ d, v }) => {
             const on = dimensionId === d.id
             return (
@@ -166,7 +174,7 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
           value={description}
           onChange={e => setDescription(e.target.value)}
           onKeyDown={handleKeyDown}
-          autoFocus
+          autoFocus={!narrow}
         />
 
         {/* 感受随手记（可选，默认折叠） */}
