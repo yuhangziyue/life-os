@@ -21,6 +21,9 @@ app.whenReady().then(() => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      // 窗口被其它窗口遮住时 Chromium 会节流渲染，Page.captureScreenshot 就会一直不回调
+      // （v3.3 排查过一次同样的现象）。验收脚本必须能在后台稳定截图。
+      backgroundThrottling: false,
       // 没有 preload —— 就是一个干净的网页环境
     },
   })

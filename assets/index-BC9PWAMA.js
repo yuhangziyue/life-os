@@ -98,4 +98,12 @@ Please change the parent <Route path="${S}"> to <Route path="${S==="/"?"*":`${S}
       background: rgba(242,236,225,.09); color: #f2ece1;
       border: 1px solid rgba(242,236,225,.22); border-radius: 8px; }
     #demo-reset:hover { background: rgba(242,236,225,.16); }
-    @media (max-width: 640px) { #demo-badge-panel { width: min(258px, calc(100vw - 40px)); } }`,document.head.appendChild(u);const o=c.querySelector("#demo-badge-panel");c.querySelector("#demo-badge-toggle").addEventListener("click",()=>{o.hidden=!o.hidden}),c.querySelector("#demo-reset").addEventListener("click",async()=>{await window.electronAPI.dbClearAll(),location.reload()})}pS();
+    @media (max-width: 640px) { #demo-badge-panel { width: min(258px, calc(100vw - 40px)); } }
+    /* 🔴 窄屏（860px 断点，与 globals.css 一致）：右下角是底栏第三个入口「我」+ FAB 的地盘。
+       浮标原来钉死在 right/bottom 14px，实机截图里它正好盖住「我」——第三个入口点不到，
+       而且跟 FAB 叠在一起。挪到左下、抬到底栏之上；面板改为向上展开。 */
+    @media (max-width: 860px) {
+      #demo-badge { right: auto; left: 12px;
+        bottom: calc(70px + env(safe-area-inset-bottom)); }
+      #demo-badge-panel { right: auto; left: 0; }
+    }`,document.head.appendChild(u);const o=c.querySelector("#demo-badge-panel");c.querySelector("#demo-badge-toggle").addEventListener("click",()=>{o.hidden=!o.hidden}),c.querySelector("#demo-reset").addEventListener("click",async()=>{await window.electronAPI.dbClearAll(),location.reload()})}pS();

@@ -1168,3 +1168,18 @@ html:not([data-cursor='off']) textarea {
   }
 }
 @media (prefers-reduced-motion: reduce) { .qa-panel { animation: none; } }
+
+/* ---------- 窄屏收尾修正（2026-08-27 实机截图逐条对出来的） ---------- */
+@media (max-width: 860px) {
+  /* 🔴 「花语 / 细看数据」这类入口：标签被右侧长说明挤成两行竖排（「花/语」）。
+     标签不许换行，说明才是可以退让的一方。 */
+  .drawer-link > span:first-child { flex: 0 0 auto; white-space: nowrap; }
+  .drawer-link { align-items: baseline; }
+  .drawer-hint { min-width: 0; }
+
+  /* 「陪伴天数」被挤成「陪伴天/数」。指标名一律不换行，宁可字号小一点 */
+  .metric-key { white-space: nowrap; font-size: 0.65rem; }
+
+  /* 主题色板在窄屏挤成三列，卡内文案全被截断。改成一列纵向铺开 */
+  [data-testid="theme-section"] .grid { grid-template-columns: 1fr; }
+}

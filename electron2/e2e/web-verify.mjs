@@ -280,6 +280,26 @@ try {
   check('手机尺寸下出底栏三入口 + FAB', mobile.barVisible && mobile.tabs === 3 && mobile.fabVisible,
         JSON.stringify(mobile))
   check('手机尺寸下侧栏收起且页面不横向溢出', mobile.asideHidden && mobile.noSideScroll, JSON.stringify(mobile))
+
+  // 🔴 回归守卫：演示浮标原来钉在右下 14px，正好盖住底栏第三个入口「我」——
+  // 第三个入口在手机上点不到。用 elementFromPoint 做真实命中测试，别只看坐标算差集。
+  const hit = await page.eval(`
+    const bar = document.querySelector('[data-testid="mobile-tabbar"]')
+    const tabs = [...bar.querySelectorAll('a')]
+    const out = tabs.map(a => {
+      const r = a.getBoundingClientRect()
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      return { tab: a.dataset.tab, reachable: !!el && (el === a || a.contains(el)), got: el?.id || el?.className || el?.tagName }
+    })
+    const fab = document.querySelector('[data-testid="mobile-fab"]')
+    const fr = fab.getBoundingClientRect()
+    const fabEl = document.elementFromPoint(fr.left + fr.width / 2, fr.top + fr.height / 2)
+    return { out, fabReachable: fabEl === fab || fab.contains(fabEl), fabGot: fabEl?.id || fabEl?.className }
+  `)
+  const blocked = hit.out.filter(t => !t.reachable)
+  check('底栏三个入口都真的点得到（没被浮标/FAB 盖住）', blocked.length === 0,
+        blocked.length ? blocked.map(b => `${b.tab} 被 ${b.got} 挡住`).join('；') : hit.out.map(t => t.tab).join(' / '))
+  check('FAB 自己也点得到', hit.fabReachable === true, String(hit.fabGot || ''))
   await page.shot(path.join(SHOTS, '手机-花.png'))
   await page.eval(`location.hash = '#/today'; return 1`)
   await sleep(900)
