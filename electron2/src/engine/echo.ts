@@ -4,7 +4,14 @@
 import type { Dimension } from '../models/dimension'
 import type { Goal } from '../models/goal'
 import type { Action, ActionQuality } from '../models/action'
-import { dimensionVitality, careStreak } from './scoring'
+import {
+  dimensionVitality,
+  careStreak,
+  calculateScore,
+  scoreAfterAdding,
+  scoreStage,
+} from './scoring'
+import { QUALITY_IMPACT } from '../models/action'
 import { pickWarmWord, type WarmWord } from '../content/warmWords'
 
 export interface Echo {
@@ -25,8 +32,10 @@ export function composeEcho(params: {
   actions: Action[]        // 写入前的全量行动
   quality: ActionQuality
   seed: string
+  /** 本季起点（上次季度会谈完成时刻，没有则花园生日）。缺省则不出账本行 */
+  seasonStart?: number
 }): Echo {
-  const { dimension, goals, actions, quality, seed } = params
+  const { dimension, goals, actions, quality, seed, seasonStart } = params
   const vitality = dimensionVitality(dimension, actions)
   const lines: string[] = []
 
@@ -44,7 +53,26 @@ export function composeEcho(params: {
     lines.push(`这是你连续第 ${streakAfter} 天照顾它`)
   }
 
-  // 效果行 3：目标推进
+  // 效果行 3：账本行（v3.3 T2，书香方案）
+  // 「本季第 N 次」永远不会重复，因为数字在变 —— 一条机制抵掉一整个内容扩容工程。
+  if (seasonStart != null) {
+    const seasonCount = actions.filter(
+      a => a.dimensionId === dimension.id && a.isCompleted && a.date >= seasonStart
+    ).length + 1 // +1 = 今天这条
+    if (seasonCount >= 2) {
+      lines.push(`这是本季第 ${seasonCount} 次照顾「${dimension.name}」`)
+    }
+  }
+
+  // 效果行 4：状态词跃迁（v3.3 T2，全票通过）
+  // 离散的、仪式性的、值得庆祝 —— 比「+0.4 分」强十倍。只在真的跨档时出现。
+  const stageBefore = scoreStage(calculateScore(dimension, actions))
+  const stageAfter = scoreStage(scoreAfterAdding(dimension, actions, QUALITY_IMPACT[quality]))
+  if (stageAfter !== stageBefore) {
+    lines.push(`🌿 「${dimension.name}」从${stageBefore}进入了${stageAfter}——它正在慢慢打开`)
+  }
+
+  // 效果行 5：目标推进
   const goal = goals.find(g => g.isActive && g.dimensionId === dimension.id)
   if (goal) {
     lines.push(`离「${goal.title}」又近了一步`)

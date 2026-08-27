@@ -31,9 +31,58 @@ const QUESTIONS: Record<PeriodType, string[]> = {
   ],
 }
 
-/** 取本期的 3 个引导问题：按周期序号轮换，同一期内稳定 */
+/**
+ * 季节性问题（v3.3 T10，报告 §9.2.2，书香供稿）——
+ * 同样是回顾，八月和十二月该问的不是同一件事。每季 3 题，并入当期问题池。
+ * 仍是本地内置、零 AI；语气红线不变：只有邀请，没有评判与催促。
+ */
+const SEASONAL: { months: number[]; questions: string[] }[] = [
+  {
+    months: [2, 3, 4], // 春 3-5 月
+    questions: [
+      '春天到了，有什么是你想重新开始的？',
+      '如果这个春天只种一样东西，你想种什么？',
+      '去年这个时候的你，会羡慕现在的你哪一点？',
+    ],
+  },
+  {
+    months: [5, 6, 7], // 夏 6-8 月
+    questions: [
+      '夏天的光很长，你最想把多出来的时间给谁？',
+      '这个夏天有没有一个瞬间，你希望它慢一点过去？',
+      '天热的时候你更容易对自己失去耐心吗？那时你需要什么？',
+    ],
+  },
+  {
+    months: [8, 9, 10], // 秋 9-11 月
+    questions: [
+      '秋天适合收获，这一季你最满意的一件事是什么？',
+      '有什么是你今年种下、现在才看出结果的？',
+      '如果要给这一年做减法，你最先放下哪一样？',
+    ],
+  },
+  {
+    months: [11, 0, 1], // 冬 12-2 月
+    questions: [
+      '冬天适合向内看，有什么是你想放下的？',
+      '这一年里，哪片花瓣其实一直在安静地等你？',
+      '如果可以给年初的自己带一句话，你会说什么？',
+    ],
+  },
+]
+
+function seasonalPool(at: number): string[] {
+  const m = new Date(at).getMonth()
+  return SEASONAL.find(s => s.months.includes(m))?.questions ?? []
+}
+
+/** 取本期的 3 个引导问题：按周期序号轮换，同一期内稳定；每期含 1 道当季问题 */
 export function pickReviewQuestions(period: PeriodType, periodStart: number): string[] {
   const pool = QUESTIONS[period]
   const idx = Math.floor(periodStart / (24 * 60 * 60 * 1000)) % pool.length
-  return [0, 1, 2].map(i => pool[(idx + i) % pool.length])
+  const base = [0, 1].map(i => pool[(idx + i) % pool.length])
+
+  const seasonal = seasonalPool(periodStart)
+  if (seasonal.length === 0) return [...base, pool[(idx + 2) % pool.length]]
+  return [...base, seasonal[idx % seasonal.length]]
 }

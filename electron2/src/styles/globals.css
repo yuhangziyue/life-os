@@ -18,7 +18,9 @@
   --border-strong: #3a3a3a;
   --text-primary: #f0eade;
   --text-secondary: #aaa294;
-  --text-muted: #78705f;
+  /* v3.3 T8（报告 §10.2.2）：原 #78705f 在暗底上做小字正文（花语手册整段）偏暗，
+     提亮约一档到 #8b8271。仍明显弱于 --text-secondary，层级关系不变。 */
+  --text-muted: #8b8271;
   --accent: #c9a96e;
   --accent-hover: #d4b87a;
   --accent-dim: #8b7355;
@@ -30,6 +32,7 @@
   --card-radius: 12px;
   --card-shadow: none;
   --dew: #f5f0e6;            /* 花瓣上的露珠 */
+  --petal-dormant-alpha: 0.15;  /* 沉睡花瓣的饱满度下限：暗底上 0.15 仍看得见 */
 }
 
 /* ---- 晨曦花园：亮色 · 茶室暖调 ----
@@ -60,6 +63,8 @@
   --card-radius: 16px;
   --card-shadow: 0 1px 2px rgba(120, 95, 50, 0.06), 0 8px 24px rgba(120, 95, 50, 0.09);
   --dew: #fdf8ea;
+  /* 宣纸底比暗底浅得多，0.15 的花瓣几乎看不见 —— 看不见的花瓣等于账本缺页 */
+  --petal-dormant-alpha: 0.22;
 }
 
 /* ---- 花间集：亮色 · 鲜花主色调 ----
@@ -90,6 +95,8 @@
   --card-radius: 16px;
   --card-shadow: 0 1px 2px rgba(210, 110, 135, 0.07), 0 8px 24px rgba(210, 110, 135, 0.10);
   --dew: #ffffff;
+  /* 白粉底最浅，沉睡花瓣要提到 0.24 才读得出形状（v3.3 T5） */
+  --petal-dormant-alpha: 0.24;
 }
 
 * {
@@ -708,6 +715,19 @@ input[type='checkbox'] {
 .qa-chip-check {
   font-size: 10px;
   line-height: 1;
+}
+
+/* 今天已照顾过的维度（v3.3 T7）：沿用花瓣上的露珠概念。
+   一颗小点就够 —— 写「今日已记」会把面板变成任务清单。 */
+.qa-chip-dew {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 2px;
+  background: var(--dew);
+  opacity: 0.75;
+  box-shadow: 0 0 3px var(--dew);
 }
 
 @media (prefers-reduced-motion: reduce) {

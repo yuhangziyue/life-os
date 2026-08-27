@@ -9,6 +9,8 @@ import { useStore } from '../stores/useStore'
 export function EchoToast() {
   const echo = useStore(s => s.echo)
   const clearEcho = useStore(s => s.clearEcho)
+  const openQuickAddWith = useStore(s => s.openQuickAddWith)
+  const dimensions = useStore(s => s.dimensions)
 
   useEffect(() => {
     if (!echo) return
@@ -45,6 +47,23 @@ export function EchoToast() {
               {echo.word.source && <span className="not-italic"> —— {echo.word.source}</span>}
             </p>
           )}
+
+          {/* 「再记一条」（v3.3 T6，报告 §4.2.4）——补记是强需求：
+              周末补记、晚上回顾今天做了什么，原本每记一条都要重新 ⌘⇧L，体验是断的。
+              预选同一片花瓣（补记通常连着记同一个维度），想换点别的花瓣就好。
+              红线：这是入口不是任务，不写「继续记录」这类催促口吻。 */}
+          <button
+            className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors mt-2.5"
+            data-testid="echo-again"
+            onClick={e => {
+              e.stopPropagation()
+              const dim = dimensions.find(d => d.name === echo.dimensionName)
+              clearEcho()
+              openQuickAddWith(dim?.id ?? '')
+            }}
+          >
+            + 再记一条
+          </button>
         </div>
       </div>
     </div>

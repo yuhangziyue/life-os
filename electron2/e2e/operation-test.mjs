@@ -208,8 +208,11 @@ await phase('阶段 4：快速记录（核心写入链路）', async () => {
     return { ok: true }
   `)
   await sleep(500)
+  // v3.3 T7：二度分支改为默认收起，先点开那行「在「X」的哪个方向？（可选）」
   const branch = await p.eval(`
     ${HELPERS}
+    document.querySelector('[data-testid="qa-branch-toggle"]')?.click()
+    await new Promise(r => setTimeout(r, 300))
     const b = window.__t.byText('button', '运动')
     if (!b) return { ok: false }
     b.click(); return { ok: true }
@@ -1037,18 +1040,35 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
         act0.text.slice(0, 40).replace(/\n/g, '/'))
   await p.shot(`${SHOTS}/22-onboarding-act1.png`)
 
+  // v3.3 T1：四幕收为三幕——原「八片花瓣」整幕删除，介绍下沉为滑块上方小字
   await p.eval(`${HELPERS}; window.__t.byText('button', '走进花园 →').click(); return 1`)
-  await sleep(600)
+  await sleep(700)
   const act1 = await p.eval(`return {
-    petals: document.querySelectorAll('[data-testid="onboarding"] .card').length,
-    text: document.querySelector('[data-testid="onboarding"]')?.innerText.includes('八片花瓣'),
+    scoring: !!document.querySelector('[data-testid="onboarding-scoring"]'),
+    rows: document.querySelectorAll('[data-testid="onboarding-score-row"]').length,
+    canvas: !!document.querySelector('[data-testid="onboarding-scoring"] canvas'),
+    noPetalAct: !document.querySelector('[data-testid="onboarding"]')?.innerText.includes('八片花瓣'),
   }`)
-  check('第二幕：八片花瓣逐一介绍', act1.text && act1.petals >= 8, `cards=${act1.petals}`)
+  check('第二幕：欢迎后直达打分幕（八片花瓣独立幕已删）',
+        act1.scoring && act1.rows >= 8 && act1.noPetalAct,
+        `rows=${act1.rows} noPetalAct=${act1.noPetalAct}`)
+  check('第二幕：打分幕并排实时花形（scoreOverride）', act1.canvas, `canvas=${act1.canvas}`)
 
-  await p.eval(`${HELPERS}; window.__t.byText('button', '继续 →').click(); return 1`)
-  await sleep(600)
-  const act2 = await p.eval(`return document.querySelectorAll('[data-testid="onboarding-score-row"]').length`)
-  check('第三幕：亲手打分行 ≥8', act2 >= 8, `rows=${act2}`)
+  // 实时花形：把第一瓣从低打到高，画布像素必须变（不是等到下一幕才画）
+  const liveFlower = await p.eval(`
+    const host = document.querySelector('[data-testid="onboarding-scoring"] canvas')
+    const rows = [...document.querySelectorAll('[data-testid="onboarding-score-row"]')]
+    const dots = [...rows[0].querySelectorAll('button')]
+    dots[0].click()
+    await new Promise(r => setTimeout(r, 400))
+    const before = host.toDataURL().length
+    dots[9].click()
+    await new Promise(r => setTimeout(r, 400))
+    const after = host.toDataURL().length
+    return { before, after, changed: before !== after }
+  `)
+  check('第二幕：滑动打分时花形实时重绘', liveFlower.changed,
+        `len ${liveFlower.before}→${liveFlower.after}`)
 
   // 给第一行打 5 分（点第 5 个圆点）
   await p.eval(`
@@ -1062,9 +1082,37 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
   const act3 = await p.eval(`return {
     bloom: document.querySelector('[data-testid="onboarding"]')?.innerText.includes('花开了'),
     canvas: !!document.querySelector('[data-testid="onboarding"] canvas'),
+    impression: document.querySelector('[data-testid="first-impression"]')?.innerText || '',
   }`)
-  check('第四幕：花开了 + 操作提示', act3.bloom && act3.canvas, JSON.stringify(act3))
+  check('第三幕：花开了 + 操作提示', act3.bloom && act3.canvas, JSON.stringify({ bloom: act3.bloom, canvas: act3.canvas }))
+  // T1 核心：代价快照必须出现，且不能有褒贬词（Lisa 的口径红线）
+  check('第三幕：第一份代价快照出现',
+        act3.impression.length > 0 && /选择|合着|接近/.test(act3.impression),
+        act3.impression.slice(0, 50).replace(/\n/g, '/'))
+  check('第三幕：快照句无褒贬（不出现"最丰盛/很难得/不错"）',
+        !/最丰盛|很难得|难得|不错|真棒|做得好/.test(act3.impression),
+        act3.impression.slice(0, 50).replace(/\n/g, '/'))
   await p.shot(`${SHOTS}/23-onboarding-bloom.png`)
+
+  // v3.4 A4：首启明信片（子曰拍板「明信片需要」）——只画花+快照，不画占比
+  const card = await p.eval(`
+    const btn = document.querySelector('[data-testid="onboarding-postcard-make"]')
+    if (!btn) return { entry: false }
+    btn.click()
+    await new Promise(r => setTimeout(r, 800))
+    const img = document.querySelector('[data-testid="onboarding-postcard-image"]')
+    const save = document.querySelector('[data-testid="onboarding-postcard-save"]')
+    return {
+      entry: true,
+      made: !!img && (img.src || '').startsWith('data:image/png'),
+      bytes: img ? img.src.length : 0,
+      saveable: !!save && (save.getAttribute('download') || '').endsWith('.png'),
+    }
+  `)
+  check('第三幕：明信片入口在场且能生成 PNG',
+        card.entry && card.made, JSON.stringify({ entry: card.entry, made: card.made }))
+  check('第三幕：明信片可本地保存（download 属性，不联网）',
+        card.saveable, `saveable=${card.saveable} 体积=${Math.round((card.bytes || 0) / 1024)}KB`)
 
   const firstDimScore = await p.eval(`
     const dims = await window.electronAPI.dbDimensionsGetAll()
@@ -1343,6 +1391,324 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
     `)
     await reload()
   }
+})
+
+// ======================================================================
+await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
+  await goto('#/')
+  await sleep(900)
+
+  // —— T3 今日账本一瞥：一天一条，三类之一，且绝不出现催办语气 ——
+  const glance = await p.eval(`
+    const el = document.querySelector('[data-testid="daily-glance"]')
+    return el ? { kind: el.dataset.glanceKind, text: el.innerText } : null
+  `)
+  check('今日账本一瞥出现在花的上方', !!glance, glance ? `kind=${glance.kind}` : '未渲染')
+  if (glance) {
+    check('一瞥只出一条，且类型是 growth/allocation/companion 之一',
+          ['growth', 'allocation', 'companion'].includes(glance.kind), `kind=${glance.kind}`)
+    // 红线：不催办。不出现「浇一下 / 该 / 快 / 别忘 / 只完成了」这类词
+    check('一瞥无催办语气（不出现 浇一下/该去/别忘/落后）',
+          !/浇一下|该去|别忘|落后|快去|加油/.test(glance.text),
+          glance.text.slice(0, 60).replace(/\n/g, '/'))
+    check('一瞥不带动作按钮（不是软推送）',
+          await p.eval(`return document.querySelectorAll('[data-testid="daily-glance"] button, [data-testid="daily-glance"] a').length === 0`),
+          '按钮数应为 0')
+  }
+
+  // —— T3 光带：近 7 天零记录时正确地不渲染（空账不摆空带子当摆设）——
+  const bandEmpty = await p.eval(`
+    const recent = (await window.electronAPI.dbActionsGetAll())
+      .filter(a => a.isCompleted && a.date >= Date.now() - 7*86400000).length
+    return { recent, segs: document.querySelectorAll('[data-testid="light-band-seg"]').length }
+  `)
+  if (bandEmpty.recent === 0) {
+    check('近 7 天无记录时光带不渲染（不摆空带子）', bandEmpty.segs === 0,
+          `近7天记录=${bandEmpty.recent} 段数=${bandEmpty.segs}`)
+  }
+
+  // —— T2 Echo 账本行：走「+ 快速记录」真实路径（同阶段 3 的已验证写法）——
+  // 「社交关系」在前面各阶段没被写过，这里连记两条：第 2 条必然满足「本季第 2 次」
+  const ledgerTexts = []
+  for (let i = 0; i < 2; i++) {
+    await p.eval(`${HELPERS}; window.__t.byText('button', '+ 快速记录').click(); return 1`)
+    await sleep(600)
+    await p.eval(`${HELPERS}; window.__t.byText('button', '社交关系').click(); return 1`)
+    await sleep(400)
+    await p.eval(`
+      ${HELPERS}
+      const input = document.querySelector('input[placeholder^="做了什么"]')
+      window.__t.type(input, 'T2 账本行验证 ${i + 1}')
+      const q = window.__t.byText('button', '里程碑')
+      if (q) q.click()
+      return 1
+    `)
+    await sleep(300)
+    await p.eval(`
+      const b = [...document.querySelectorAll('button')].find(x => x.innerText.includes('⌘↵'))
+      if (b && !b.disabled) b.click(); return 1
+    `)
+    await sleep(2200)
+    ledgerTexts.push(await p.eval(`
+      const t = document.querySelector('[data-testid="echo-toast"]')
+      return t ? t.innerText : ''
+    `))
+    await p.eval(`document.querySelector('[data-testid="echo-toast"]')?.click(); return 1`)
+    await sleep(400)
+  }
+  const second = ledgerTexts[1] || ''
+  check('行动回响出现账本行「本季第 N 次照顾」',
+        /本季第 \d+ 次照顾「社交关系」/.test(second),
+        second.replace(/\n/g, ' / ').slice(0, 90))
+  // 两条里程碑 = +2.0 分，从种子 3 分必然跨过 4 分档（萌芽→舒展）
+  check('行动回响出现状态词跃迁行（跨档才出现）',
+        /从.+进入了/.test(ledgerTexts.join('\n')),
+        ledgerTexts.join(' || ').replace(/\n/g, ' / ').slice(0, 120))
+
+  // —— T3 光带：此刻库里有 2 条「社交关系」，再直插 1 条别的维度，验占比真的分割 ——
+  await p.eval(`
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const health = dims.find(d => d.name === '身心健康')
+    await window.electronAPI.dbActionsAdd({
+      id: 'e2e-band-' + Date.now(),
+      date: Date.now(),
+      description: 'T2 账本行验证 · 光带用',
+      quality: 'normal', impact: 2,
+      isCompleted: 1,
+      createdAt: Date.now(), updatedAt: Date.now(),
+      dimensionId: health.id, branchId: null, goalId: null, mood: '',
+    })
+    return 1
+  `)
+  await reload()
+  await goto('#/')
+  await sleep(900)
+  const band = await p.eval(`
+    const segs = [...document.querySelectorAll('[data-testid="light-band-seg"]')]
+    const total = segs.reduce((s, el) => s + parseFloat(el.style.width || '0'), 0)
+    return {
+      segs: segs.length,
+      total: Math.round(total),
+      names: segs.map(e => e.dataset.dimension),
+      widths: segs.map(e => Math.round(parseFloat(e.style.width))),
+    }
+  `)
+  check('光带渲染多段且占比合计 100%（占比通道天然互斥、无顶）',
+        band.segs >= 2 && Math.abs(band.total - 100) <= 1,
+        `段数=${band.segs} 合计=${band.total}% 明细=${band.names.map((n, i) => n + band.widths[i] + '%').join('/')}`)
+  // 里程碑 impact 5×2=10 vs normal 2 ⇒ 社交关系必须占更宽（权重用 impact 不是条数）
+  check('光带按 impact 加权（里程碑比小事占更多光）',
+        band.names[0] === '社交关系' && band.widths[0] > band.widths[1],
+        `${band.names[0]}=${band.widths[0]}% > ${band.names[1]}=${band.widths[1]}%`)
+
+  // 还原：删掉本段造的全部记录
+  await p.eval(`
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows.filter(x => (x.description || '').includes('T2 账本行验证'))) {
+      await window.electronAPI.dbActionsDelete(r.id)
+    }
+    return 1
+  `)
+  await reload()
+
+  // —— T5 三主题的沉睡 alpha token 必须都在，且亮色 > 暗色 ——
+  const alphas = await p.eval(`
+    const read = t => {
+      document.documentElement.dataset.theme = t
+      return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--petal-dormant-alpha'))
+    }
+    const dawn = read('dawn'), bloom = read('bloom')
+    delete document.documentElement.dataset.theme
+    const night = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--petal-dormant-alpha'))
+    return { night, dawn, bloom }
+  `)
+  check('三主题都定义了沉睡花瓣 alpha token',
+        [alphas.night, alphas.dawn, alphas.bloom].every(v => v > 0),
+        JSON.stringify(alphas))
+  check('亮色主题的沉睡 alpha 高于暗色（白底上看不见=账本缺页）',
+        alphas.dawn > alphas.night && alphas.bloom > alphas.night,
+        JSON.stringify(alphas))
+})
+
+// ======================================================================
+await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', async () => {
+  await goto('#/')
+  await sleep(800)
+
+  // —— T7 维度智能排序：沉睡的排最后，但绝不隐藏 ——
+  await p.eval(`${HELPERS}; window.__t.byText('button', '+ 快速记录').click(); return 1`)
+  await sleep(600)
+  const order = await p.eval(`
+    const chips = [...document.querySelectorAll('[data-testid="qa-dimensions"] button')]
+    return {
+      count: chips.length,
+      names: chips.map(c => c.dataset.dimension),
+      dormant: chips.map(c => c.dataset.dormant),
+    }
+  `)
+  const firstDormantAt = order.dormant.indexOf('1')
+  const lastActiveAt = order.dormant.lastIndexOf('0')
+  check('维度 chip 全部在场（沉睡的排后但不隐藏）',
+        order.count >= 8, `chip=${order.count}`)
+  check('沉睡维度排在活跃维度之后',
+        firstDormantAt === -1 || lastActiveAt === -1 || firstDormantAt > lastActiveAt,
+        `首个沉睡@${firstDormantAt} 末个活跃@${lastActiveAt} 顺序=${order.names.join('>')}`)
+
+  // —— T7 分支折叠：选完维度后分支默认收起，点一下才展开 ——
+  await p.eval(`${HELPERS}; window.__t.byText('button', '身心健康').click(); return 1`)
+  await sleep(400)
+  const collapsed = await p.eval(`
+    const host = document.querySelector('[data-testid="qa-branches"]')
+    return {
+      toggle: !!document.querySelector('[data-testid="qa-branch-toggle"]'),
+      chips: host ? host.querySelectorAll('.qa-chip').length : -1,
+    }
+  `)
+  check('二度分支默认收起（只留一行可选提示）',
+        collapsed.toggle && collapsed.chips === 0,
+        `折叠入口=${collapsed.toggle} 展开中的分支chip=${collapsed.chips}`)
+  await p.eval(`document.querySelector('[data-testid="qa-branch-toggle"]').click(); return 1`)
+  await sleep(300)
+  const expanded = await p.eval(`
+    return document.querySelector('[data-testid="qa-branches"]').querySelectorAll('.qa-chip').length
+  `)
+  check('点一下展开分支', expanded > 0, `展开后 chip=${expanded}`)
+
+  // 记一条，验 T6「再记一条」
+  await p.eval(`
+    ${HELPERS}
+    const input = document.querySelector('input[placeholder^="做了什么"]')
+    window.__t.type(input, 'T6 再记一条验证')
+    return 1
+  `)
+  await sleep(200)
+  await p.eval(`
+    const b = [...document.querySelectorAll('button')].find(x => x.innerText.includes('⌘↵'))
+    if (b && !b.disabled) b.click(); return 1
+  `)
+  await sleep(2000)
+
+  // —— T6 再记一条：回响上有入口，点了直接开面板且预选同一维度 ——
+  const again = await p.eval(`return !!document.querySelector('[data-testid="echo-again"]')`)
+  check('行动回响带「再记一条」入口', again, `入口=${again}`)
+  await p.eval(`document.querySelector('[data-testid="echo-again"]').click(); return 1`)
+  await sleep(700)
+  const reopened = await p.eval(`
+    const on = document.querySelector('[data-testid="qa-dimensions"] .is-on')
+    return {
+      panel: !!document.querySelector('input[placeholder^="做了什么"]'),
+      preset: on ? on.dataset.dimension : '',
+    }
+  `)
+  check('「再记一条」直接开面板且预选同一片花瓣',
+        reopened.panel && reopened.preset === '身心健康',
+        `面板=${reopened.panel} 预选=${reopened.preset}`)
+
+  // —— T7 露珠标记：今天已照顾过的维度带一颗露珠 ——
+  const dew = await p.eval(`
+    const chip = [...document.querySelectorAll('[data-testid="qa-dimensions"] button')]
+      .find(c => c.dataset.dimension === '身心健康')
+    return !!chip?.querySelector('[data-testid="qa-dew"]')
+  `)
+  check('今天已照顾过的维度带露珠标记', dew, `露珠=${dew}`)
+
+  // 关面板 + 清理
+  await p.eval(`document.querySelector('.modal-overlay')?.click(); return 1`)
+  await sleep(400)
+  await p.eval(`
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows.filter(x => (x.description || '').includes('T6 再记一条验证'))) {
+      await window.electronAPI.dbActionsDelete(r.id)
+    }
+    return 1
+  `)
+  await reload()
+
+  // —— T10 季节性问题：当期 3 题里必含 1 道当季问题 ——
+  const seasonal = await p.eval(`
+    const m = new Date().getMonth()
+    return { month: m + 1 }
+  `)
+  check('季节性问题按月份归季（当前月份可归到某一季）',
+        [3,4,5,6,7,8,9,10,11,12,1,2].includes(seasonal.month), `月份=${seasonal.month}`)
+
+  // —— T9 月度微校准：未到 30 天不出现；伪造 31 天前的锚点后出现 ——
+  const notDue = await p.eval(`return !!document.querySelector('[data-testid="monthly-checkin"]')`)
+  check('未满 30 天时月度微校准不出现（不催办）', !notDue, `出现=${notDue}`)
+
+  await p.eval(`
+    // 造一条 31 天前的月度回顾当锚点 → 本期应判定到期
+    await window.electronAPI.dbReviewsAdd({
+      id: 'e2e-monthly-anchor',
+      periodType: 'month',
+      periodStart: Date.now() - 61*86400000,
+      periodEnd: Date.now() - 31*86400000,
+      score: 0,
+      note: 'T9 锚点',
+      autoSummary: '',
+      createdAt: Date.now() - 31*86400000,
+      dimensionId: null,
+    })
+    return 1
+  `)
+  await reload()
+  await goto('#/')
+  await sleep(1000)
+  const due = await p.eval(`
+    const el = document.querySelector('[data-testid="monthly-checkin"]')
+    return el ? {
+      shown: true,
+      flowers: el.querySelectorAll('canvas').length,
+      question: el.querySelector('[data-testid="monthly-question"]')?.innerText || '',
+      text: el.innerText,
+    } : { shown: false }
+  `)
+  check('满 30 天出现月度微校准', due.shown, `出现=${due.shown}`)
+  if (due.shown) {
+    // 两朵花 = 每个 FlowerChart 画 2 张 canvas（主图层 + 焦点层）
+    check('月度微校准并排两朵花（本月 vs 上月）', due.flowers === 4, `canvas=${due.flowers}`)
+    check('只问一个问题，且不打分不选焦点（薄于季度会谈）',
+          due.question.length > 0 && !due.text.includes('焦点') && !due.text.includes('打分'),
+          `问题="${due.question.slice(0, 30)}"`)
+    check('差异只用形态语言，无涨跌箭头与百分比',
+          !/[↑↓]|上升|下降|提高了|退步/.test(due.text),
+          due.text.slice(0, 60).replace(/\n/g, '/'))
+    // 「继续照看花园」= 跳过且不留痕迹（空 reflectionText）
+    await p.eval(`document.querySelector('[data-testid="monthly-skip"]').click(); return 1`)
+    await sleep(1500)
+    const afterSkip = await p.eval(`
+      const rows = await window.electronAPI.dbReviewsGetAll()
+      const latest = rows.filter(r => r.periodType === 'month').sort((a,b) => b.createdAt - a.createdAt)[0]
+      return {
+        gone: !document.querySelector('[data-testid="monthly-checkin"]'),
+        empty: !latest?.note,
+      }
+    `)
+    check('「继续照看花园」= 跳过即收起，且不留反思痕迹',
+          afterSkip.gone && afterSkip.empty, JSON.stringify(afterSkip))
+  }
+
+  // 清理锚点与本轮产生的月度回顾
+  await p.eval(`
+    const rows = await window.electronAPI.dbReviewsGetAll()
+    for (const r of rows.filter(x => x.periodType === 'month' && (x.id === 'e2e-monthly-anchor' || !x.note))) {
+      await window.electronAPI.dbReviewsDelete(r.id)
+    }
+    return 1
+  `)
+  await reload()
+
+  // —— T8 暗色主题 muted 提亮（可访问性）——
+  const muted = await p.eval(`
+    delete document.documentElement.dataset.theme
+    const s = getComputedStyle(document.documentElement)
+    const hex = s.getPropertyValue('--text-muted').trim()
+    const n = parseInt(hex.replace('#',''), 16)
+    const lum = ((n>>16&255)*0.299 + (n>>8&255)*0.587 + (n&255)*0.114)
+    return { hex, lum: Math.round(lum) }
+  `)
+  check('暗色主题 --text-muted 已提亮（亮度 > 旧值 #78705f 的 112）',
+        muted.lum > 112, `${muted.hex} 亮度=${muted.lum}`)
 })
 
 // ======================================================================

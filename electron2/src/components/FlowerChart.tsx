@@ -84,6 +84,7 @@ export function FlowerChart({
     const accent = cssVar('--accent', '#c9a96e')
     const dew = cssVar('--dew', '#f5f0e6')
     const focusStyle = FOCUS_STYLES[theme]
+    const dormantAlpha = parseFloat(cssVar('--petal-dormant-alpha', '0.15')) || 0.15
 
     // 花瓣从竖直向上开始，顺时针排布
     dimensions.forEach((dim, i) => {
@@ -93,10 +94,12 @@ export function FlowerChart({
       const score = Math.min(Math.max(raw, 0), 10)
       const len = minLen + (maxLen - minLen) * (score / 10)
 
-      // 饱满度：基础 0.32，近 7 天每条行动 +0.09（封顶 0.8）；沉睡降到 0.15
+      // 饱满度：基础 0.32，近 7 天每条行动 +0.09（封顶 0.8）；沉睡降到主题给的下限。
       // ⚠️ 红线（设计稿 §3.4）：这里绝不因为"别人是焦点"而给非焦点花瓣降一个字节的饱和度。
       // 焦点是加法照明（多一道金边），不是减法审判（把别人变灰）。e2e 有取色断言守这条。
-      let alpha = v.dormant ? 0.15 : Math.min(0.32 + v.recentCount * 0.09, 0.8)
+      // 沉睡 alpha 走 CSS token（v3.3 T5）：暗底 0.15 够看，白底(bloom)必须提到 0.24——
+      // 看不见的花瓣等于账本缺页，那是功能性失效，不是美化问题。
+      let alpha = v.dormant ? dormantAlpha : Math.min(0.32 + v.recentCount * 0.09, 0.8)
       const widthFactor = v.dormant ? 0.5 : 1
       // 聚光（仅会谈第二幕逐瓣打分时）：这是临时的镜头语言，不是常态视觉
       if (spotlightId && dim.id !== spotlightId) alpha *= 0.35

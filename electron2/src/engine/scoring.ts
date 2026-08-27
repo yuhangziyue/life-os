@@ -5,7 +5,7 @@ import type { Action } from '../models/action'
 
 export const DORMANT_AFTER_DAYS = 3  // 连续 N 天无行动进入「沉睡」（只改状态，不扣分）
 const SCORE_WINDOW_DAYS = 30         // 评分计算窗口（最近 30 天）
-const IMPACT_MULTIPLIER = 0.2        // 行动贡献值乘数
+export const IMPACT_MULTIPLIER = 0.2 // 行动贡献值乘数
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // ========== 核心计算 ==========
@@ -114,6 +114,21 @@ export function careStreak(dimensionId: string, actions: Action[], now: number =
     cursor -= DAY_MS
   }
   return streak
+}
+
+/**
+ * 加一条今天的行动之后，这个维度会变成几分。
+ *
+ * 给行动回响判断「状态词是否跨档」用（v3.3 T2）。今天的行动必然落在 30 天窗口内，
+ * 所以就是当前分数加上这条的贡献，再夹到 [0,10] —— 与 computeScore 同一口径。
+ */
+export function scoreAfterAdding(
+  dimension: Dimension,
+  actions: Action[],
+  impact: number,
+): number {
+  const current = calculateScore(dimension, actions)
+  return Math.min(Math.max(current + impact * IMPACT_MULTIPLIER, 0), 10)
 }
 
 // ========== 状态词（首页第一语言；精确数字留给统计页） ==========

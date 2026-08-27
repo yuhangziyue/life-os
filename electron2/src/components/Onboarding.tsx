@@ -1,17 +1,26 @@
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useStore, useEnabledDimensions } from '../stores/useStore'
+import { composeFirstImpression } from '../engine/impression'
+import { renderPostcard } from '../services/postcard'
 import { FlowerChart } from './FlowerChart'
 import { FlowerLogo } from './FlowerLogo'
 import { PetalScoreRow } from './PetalScoreRow'
 
 /**
- * 首启引导四幕（v3.1 B2，吞并 P0-8 首次盘点仪式）——
- *   第一幕 欢迎与定性：这不是考核表，是你的花园
- *   第二幕 八片花瓣：认识每个维度
- *   第三幕 亲手打分：初始分是用户第一次认真看自己的结果，不是种子写死的 3
- *   第四幕 花开了：三个基本操作提示 + 手册入口 + 第一步邀请（Lisa L5）
+ * 首启引导三幕（v3.3 T1，由 v3.1 的四幕收缩而来）——
+ *   第一幕 欢迎与定性：这不是考核表，是你的花园（先卸防备，才有真话——书香）
+ *   第二幕 八瓣速评 + 实时花形：左边打分，右边的花当场伸缩
+ *   第三幕 花开了 + 第一份代价快照：一句由花形偏态生成的话 + 三个操作提示
+ *
+ * v3.3 相对 v3.1 的两处改动（2026-08-25 第四轮圆桌）：
+ *   ① 原第二幕「认识八片花瓣」整幕删除 —— 认知成本下沉为滑块上方一行小字。
+ *      理由（小露）：让人闭着眼睛捏泥巴、捏完再看，等于把最好的一刻挪到了最后。
+ *   ② 新增「代价快照」—— 核心价值从第 84 天搬到第 1 天。
+ *      Aha 不是我们递给他的一句话，是他自己在滑动时看见的；快照句只是替他说出口。
+ *
  * 全程可跳过（跳过 = 种子分照旧）；设置页可重看。
  * 语气红线（晓雅 X3）：邀请式，不出现任何目标设定与命令句。
+ * 快照句红线（Lisa）：不褒不贬 —— 「均匀」不是成就，「合着」不是辜负。
  */
 
 // 八个种子维度的一句话介绍；自种维度走兜底
@@ -40,12 +49,47 @@ export function Onboarding() {
     () => Object.fromEntries(dimensions.map(d => [d.id, Math.round(d.initialScore) || 3]))
   )
 
+  // 代价快照：用用户亲手打的分算，不读写库后的 currentScore（口径稳定，不受写入时机影响）
+  const impression = useMemo(
+    () => composeFirstImpression(dimensions, scores),
+    [dimensions, scores],
+  )
+
+  // 首启明信片（v3.4 A4，子曰拍板「明信片需要」）——
+  // 折中方案：这张只画花 + 那句代价快照，**不画光带占比**。
+  // 第一天他一条记录都没有，占比是空的；画出来就是编的。
+  const bloomHost = useRef<HTMLDivElement>(null)
+  const [postcard, setPostcard] = useState<string | null>(null)
+
+  const makePostcard = () => {
+    const canvas = bloomHost.current?.querySelector('canvas')
+    if (!canvas) return
+    const styles = getComputedStyle(document.documentElement)
+    setPostcard(renderPostcard(
+      {
+        dimensions,
+        actions,
+        flowerCanvas: canvas,
+        title: '花开的第一天',
+        since: Date.now(),
+        quote: impression[0],
+        showShares: false,
+      },
+      {
+        bg: styles.getPropertyValue('--bg-primary').trim() || '#0d0d0d',
+        text: styles.getPropertyValue('--text-primary').trim() || '#e8e3d8',
+        muted: styles.getPropertyValue('--text-muted').trim() || '#8b8271',
+        accent: styles.getPropertyValue('--accent').trim() || '#c9a96e',
+      },
+    ))
+  }
+
   const handleBloom = async () => {
     if (saving) return
     setSaving(true)
     try {
       await completeOnboarding(scores)
-      setAct(3) // 完成写入后进「花开了」，收尾由本组件负责
+      setAct(2) // 完成写入后进「花开了」，收尾由本组件负责
     } finally {
       setSaving(false)
     }
@@ -60,7 +104,11 @@ export function Onboarding() {
       style={{ background: 'var(--bg-primary)' }}
     >
       <div className="min-h-full flex items-center justify-center p-8">
-        <div className="w-full max-w-xl animate-fade-in" key={act}>
+        {/* 打分幕要并排放花，比其余两幕宽 */}
+        <div
+          className={`w-full animate-fade-in ${act === 1 ? 'max-w-4xl' : 'max-w-xl'}`}
+          key={act}
+        >
 
           {act === 0 && (
             <div className="text-center space-y-6">
@@ -85,55 +133,44 @@ export function Onboarding() {
           )}
 
           {act === 1 && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-light tracking-wide mb-2">八片花瓣</h2>
-                <p className="text-sm text-[var(--text-muted)]">每片花瓣，照看你生活的一个角落</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {dimensions.map(d => (
-                  <div key={d.id} className="card p-4 flex items-start gap-3">
-                    <span
-                      className="w-3 h-3 rounded-full flex-shrink-0 mt-1.5"
-                      style={{ backgroundColor: d.colorHex }}
-                    />
-                    <div>
-                      <div className="text-sm font-medium">{d.name}</div>
-                      <div className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
-                        {DIMENSION_INTROS[d.name] ?? '你亲手种下的一片花瓣'}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between">
-                <button className="btn btn-ghost text-sm" onClick={() => setAct(0)}>← 上一步</button>
-                <button className="btn btn-primary" onClick={() => setAct(2)}>继续 →</button>
-              </div>
-            </div>
-          )}
-
-          {act === 2 && (
-            <div className="space-y-5">
+            <div className="space-y-5" data-testid="onboarding-scoring">
               <div className="text-center">
                 <h2 className="text-2xl font-light tracking-wide mb-2">此刻的花</h2>
                 <p className="text-sm text-[var(--text-muted)] leading-relaxed">
                   现在的你，觉得每片花瓣舒展到哪里了？<br />凭直觉就好——没有对错，之后随时可以改。
                 </p>
               </div>
-              <div className="space-y-3 max-h-[46vh] overflow-y-auto pr-1">
-                {dimensions.map(d => (
-                  <PetalScoreRow
-                    key={d.id}
-                    dimension={d}
-                    value={scores[d.id] ?? 3}
-                    onChange={n => setScores(s => ({ ...s, [d.id]: n }))}
-                    testId="onboarding-score-row"
+
+              {/* 左打分 · 右实时花形。每滑一格，那片花瓣当场伸缩——
+                  自己看见的东西不会被反驳（小露 R1 的完整形态） */}
+              <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-start">
+                <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
+                  {dimensions.map(d => (
+                    <div key={d.id} className="space-y-1">
+                      <div className="text-xs text-[var(--text-muted)] leading-relaxed pl-0.5">
+                        {DIMENSION_INTROS[d.name] ?? '你亲手种下的一片花瓣'}
+                      </div>
+                      <PetalScoreRow
+                        dimension={d}
+                        value={scores[d.id] ?? 3}
+                        onChange={n => setScores(s => ({ ...s, [d.id]: n }))}
+                        testId="onboarding-score-row"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-center md:sticky md:top-0">
+                  <FlowerChart
+                    dimensions={dimensions}
+                    actions={actions}
+                    size={300}
+                    scoreOverride={scores}
                   />
-                ))}
+                </div>
               </div>
+
               <div className="flex items-center justify-between">
-                <button className="btn btn-ghost text-sm" onClick={() => setAct(1)}>← 上一步</button>
+                <button className="btn btn-ghost text-sm" onClick={() => setAct(0)}>← 上一步</button>
                 <button className="btn btn-primary" disabled={saving} onClick={handleBloom} data-testid="onboarding-bloom">
                   {saving ? '花正在开…' : '让花开 →'}
                 </button>
@@ -141,17 +178,71 @@ export function Onboarding() {
             </div>
           )}
 
-          {act === 3 && (
+          {act === 2 && (
             <div className="text-center space-y-6">
               <h2 className="text-2xl font-light tracking-wide">花开了</h2>
-              <div className="flex justify-center animate-bloom">
+              <div ref={bloomHost} className="flex justify-center animate-bloom">
                 <FlowerChart dimensions={dimensions} actions={actions} size={280} />
               </div>
+
+              {/* 第一份代价快照：核心价值在第 1 天兑现。
+                  事实 + 归因 + 一个不必回答的问题，不褒不贬（Lisa 定的口径） */}
+              {impression.length > 0 && (
+                <div
+                  className="max-w-md mx-auto space-y-2 text-left"
+                  data-testid="first-impression"
+                >
+                  {impression.map((line, i) => (
+                    <p
+                      key={i}
+                      className={
+                        i === 0
+                          ? 'text-base text-[var(--text-primary)] leading-loose'
+                          : 'text-sm text-[var(--text-secondary)] leading-loose'
+                      }
+                    >
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               <div className="text-sm text-[var(--text-secondary)] space-y-2 max-w-md mx-auto text-left leading-relaxed">
                 <p>🌱 想记点什么：<b>⌘⇧L</b> 或点「+ 快速记录」，选一片花瓣，回车就好</p>
                 <p>🌿 每周想回望：左边的「省 · 回顾反思」里有引导问题，答一个就够</p>
                 <p>🌸 想换个气氛：设置里有三座花园——暗夜、茶室、花间</p>
               </div>
+              {/* 明信片：想留就留，不留也走得掉。不是任务，是纪念品 */}
+              <div className="space-y-3" data-testid="onboarding-postcard">
+                {postcard ? (
+                  <>
+                    <img
+                      src={postcard}
+                      alt="花开第一天的明信片"
+                      data-testid="onboarding-postcard-image"
+                      className="w-40 mx-auto rounded-lg"
+                      style={{ boxShadow: 'var(--card-shadow)' }}
+                    />
+                    <a
+                      className="btn btn-ghost text-sm"
+                      href={postcard}
+                      download="life-flower-day-1.png"
+                      data-testid="onboarding-postcard-save"
+                    >
+                      保存这张明信片
+                    </a>
+                  </>
+                ) : (
+                  <button
+                    className="btn btn-ghost text-sm"
+                    onClick={makePostcard}
+                    data-testid="onboarding-postcard-make"
+                  >
+                    把这朵花留成一张明信片
+                  </button>
+                )}
+              </div>
+
               <p className="text-xs text-[var(--text-muted)]">
                 想深入了解这座花园，随时翻侧栏的「花语手册」
               </p>

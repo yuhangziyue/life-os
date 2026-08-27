@@ -25,7 +25,18 @@ import type { Review } from '../models/review'
 import type { AIConfig, AITestResult } from '../services/ai'
 import type { QuarterlyReview } from '../models/quarterly'
 import { MAX_FOCUS } from '../models/quarterly'
-import { nextDeferUntil } from '../engine/quarterly'
+import { nextDeferUntil, gardenBirth } from '../engine/quarterly'
+
+/**
+ * 本季起点 = 上一次「完成」的季度会谈时刻；从未谈过则花园生日。
+ * 给行动回响的账本行（「本季第 N 次照顾 X」）用，与产品的 84 天节奏同源，
+ * 刻意不用自然季度 —— 这座花园的季节是从上次结算算起的。
+ */
+function seasonStartOf(reviews: QuarterlyReview[], dimensions: Dimension[]): number {
+  const done = reviews.filter(r => r.completedAt != null)
+  if (done.length === 0) return gardenBirth(dimensions)
+  return Math.max(...done.map(r => r.completedAt as number))
+}
 
 // 同 src/db/database.ts：localStorage.setItem('lifeos:debug','1') 打开
 const DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('lifeos:debug') === '1'
@@ -46,6 +57,8 @@ interface AppState {
   loadError: string | null
   sidebarCollapsed: boolean
   quickAddOpen: boolean
+  /** 「再记一条」预选的维度 id（v3.3 T6）；'' = 不预选 */
+  quickAddPreset: string
   selectedDate: number
 
   theme: ThemeId
@@ -67,6 +80,8 @@ interface AppState {
   loadData: () => Promise<void>
   toggleSidebar: () => void
   setQuickAddOpen: (open: boolean) => void
+  /** 打开面板并预选维度：补记场景（周末批量补、晚上回顾今天）的入口 */
+  openQuickAddWith: (dimensionId: string) => void
   setSelectedDate: (date: number) => void
   setTheme: (theme: ThemeId) => void
   clearEcho: () => void
@@ -128,6 +143,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadError: null,
   sidebarCollapsed: false,
   quickAddOpen: false,
+  quickAddPreset: '',
   selectedDate: startOfToday(),
   theme: loadTheme(),
   echo: null,
@@ -203,7 +219,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setQuickAddOpen: (open) => set({ quickAddOpen: open }),
+  setQuickAddOpen: (open) => set({ quickAddOpen: open, quickAddPreset: open ? get().quickAddPreset : '' }),
+  openQuickAddWith: (dimensionId) => set({ quickAddOpen: true, quickAddPreset: dimensionId }),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setTheme: (theme) => set({ theme }),
   clearEcho: () => set({ echo: null }),
@@ -368,10 +385,17 @@ export const useStore = create<AppState>((set, get) => ({
     LOG('addAction', '创建:', newAction.descriptionText)
 
     // 行动回响：用「写入前」的状态判断唤醒/连续天数，写入完成后再展示
-    const { dimensions, goals, actions } = get()
+    const { dimensions, goals, actions, quarterlyReviews } = get()
     const dim = dimensions.find(d => d.id === action.dimensionId)
     const echo = dim
-      ? composeEcho({ dimension: dim, goals, actions, quality: newAction.quality, seed: newAction.id })
+      ? composeEcho({
+          dimension: dim,
+          goals,
+          actions,
+          quality: newAction.quality,
+          seed: newAction.id,
+          seasonStart: seasonStartOf(quarterlyReviews, dimensions),
+        })
       : null
 
     await addAction(newAction)

@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { useStore, useTodayActions, useOverallScore, useCoveredCount, useEnabledDimensions } from '../stores/useStore'
 import { FlowerChart } from '../components/FlowerChart'
+import { DailyGlance } from '../components/DailyGlance'
+import { LightBand } from '../components/LightBand'
 import { GardenTasks } from '../components/GardenTasks'
+import { MonthlyCheckin } from '../components/MonthlyCheckin'
+import { PostcardCard } from '../components/PostcardCard'
 import { QuarterlyInvite } from '../components/QuarterlyInvite'
 import { ActionRow } from '../components/ActionRow'
 import { scoreStage, dimensionVitality } from '../engine/scoring'
@@ -52,10 +56,18 @@ export function Dashboard() {
           </button>
         </div>
 
+        {/* 今日账本一瞥（T3）：放最顶上，因为「生长」是最强的回来理由（小露）。
+            刻意在花的上方 —— 报告原方案把它放页面底部，底部没人看。 */}
+        <DailyGlance />
+
         {/* 今日的花 + 状态 */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <div ref={flowerCardRef} className="card md:col-span-3 flex items-center justify-center py-6">
+          <div ref={flowerCardRef} className="card md:col-span-3 flex flex-col items-center justify-center gap-4 py-6">
             <FlowerChart dimensions={dimensions} actions={actions} />
+            {/* 光带：花瓣说「长成什么样」，光带说「光是从哪儿分出去的」 */}
+            <div className="w-full px-6">
+              <LightBand dimensions={dimensions} actions={actions} />
+            </div>
           </div>
 
           <div className="card md:col-span-2 flex flex-col items-center justify-center gap-3 py-8 text-center">
@@ -82,8 +94,16 @@ export function Dashboard() {
           </div>
         </div>
 
+        {/* 花的明信片（T4）：只在两个节点出现——季度会谈完成当天 / 陪伴里程碑。
+            复用上面那张花的 canvas，两个触发点共一个集成点 */}
+        <PostcardCard flowerHost={flowerCardRef} />
+
         {/* 季度会谈到期邀请（满 84 天才出现，可推迟） */}
         <QuarterlyInvite />
+
+        {/* 月度微校准（T9）：30 天一次的轻量结算，排在季度会谈之后——
+            同一天两个都到期时，季度那场分量更重，先请它 */}
+        <MonthlyCheckin />
 
         {/* 花园任务（今日轻推） */}
         <GardenTasks />
