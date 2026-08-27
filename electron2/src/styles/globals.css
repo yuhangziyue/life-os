@@ -1183,3 +1183,270 @@ html:not([data-cursor='off']) textarea {
   /* 主题色板在窄屏挤成三列，卡内文案全被截断。改成一列纵向铺开 */
   [data-testid="theme-section"] .grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   v3.5.1 手机端是唯一形态（2026-08-27 子曰拍板「设置为手机端的交互」）
+   ------------------------------------------------------------
+   之前是「窄屏底栏 / 宽屏侧栏」双形态。现在收敛为一套：
+   **底部三 tab 在所有宽度下生效**，宽屏只是把内容收进一条居中的手机宽列。
+   为什么这么做而不是做响应式两套：两套形态就要养两套设计决策，
+   而这个产品的主战场（小红书导流 + 添加到主屏）90% 是手机。
+   桌面版仍然能用 —— 它只是变成了「一台很大的手机」，不再有第二套布局。
+   这一段刻意放在文件最末：同特异性下后写的赢，覆盖上面那些 max-width 媒体查询。
+   ============================================================ */
+
+/* 手机宽列：宽屏下内容居中，两侧留白，视觉上就是一部手机 */
+:root { --phone-col: 480px; }
+
+.zen-aside { display: none; }
+.desktop-only { display: none; }
+
+.page-pad {
+  padding: 1rem 1rem calc(5.5rem + env(safe-area-inset-bottom));
+  max-width: var(--phone-col);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.mobile-tabbar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  right: auto; bottom: 0; width: min(100%, var(--phone-col)); z-index: 45;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  backdrop-filter: blur(10px);
+}
+
+.mobile-fab {
+  display: grid;
+  position: fixed; z-index: 46;
+  left: calc(50% + min(50vw, var(--phone-col) / 2) - 72px);
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-contrast);
+  font-size: 0.7rem; line-height: 1.25; letter-spacing: 0.04em;
+  place-items: center; border: none;
+  box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.28);
+}
+
+/* 记录面板与花瓣面板一律从底部升起（手机语法就是这个产品的唯一语法） */
+.qa-scrim { align-items: flex-end; padding-top: 0; }
+.qa-panel {
+  margin: 0 auto; max-width: var(--phone-col); border-radius: 20px 20px 0 0;
+  padding: 0.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
+  max-height: 86vh; overflow-y: auto;
+  animation: sheetUp 0.24s ease-out;
+}
+.qa-grip { display: block; }
+.qa-dim-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+.qa-dim-grid .qa-chip-dim {
+  min-height: 64px; flex-direction: column; justify-content: center;
+  gap: 0.25rem; padding: 0.4rem 0.2rem; font-size: 0.7rem; text-align: center;
+  border-radius: 12px;
+}
+
+.sheet-scrim { align-items: flex-end; }
+.sheet-body { max-width: var(--phone-col); border-radius: 20px 20px 0 0; }
+
+.card { padding: 0.9rem 1rem; }
+.drawer-link > span:first-child { flex: 0 0 auto; white-space: nowrap; }
+.drawer-link { align-items: baseline; }
+.drawer-hint { min-width: 0; }
+.metric-key { white-space: nowrap; font-size: 0.65rem; }
+[data-testid="theme-section"] .grid { grid-template-columns: 1fr; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-panel, .sheet-body { animation: none; }
+}
+
+/* ============================================================
+   v3.6 —— 第五轮圆桌落地样式（花间集是唯一主题）
+   ------------------------------------------------------------
+   小露定的三条白底规则，写在这里当红线：
+   ① 白底上「光」不是"亮"，是"浓" —— #fbeef1 上加亮等于消失
+   ② 发光只能是一条 1px 近白线，不能是一团光。线可见，团不可见
+   ③ 明确禁止：box-shadow 外发光 / canvas shadowBlur /
+      mix-blend-mode: screen / 白色径向渐变 / canvas globalCompositeOperation='lighter'
+   ============================================================ */
+
+/* ---------- 光带（常驻，含回执脉冲） ---------- */
+.light-band-track {
+  display: flex; height: 10px; border-radius: 999px; overflow: hidden;
+  background: var(--bg-hover);
+}
+.light-band-track > div {
+  opacity: 0.78;
+  transition: width 0.6s cubic-bezier(0.22, 0.61, 0.36, 1), filter 0.24s ease-out;
+}
+/* 回执：这一段做一次饱和度脉冲，然后**停在 1.06 不回落** ——
+   它不是一次动画，是一个状态标记；状态标记不会习惯化，因为它不是事件，是环境 */
+.light-band-track > div.is-pulsing { filter: saturate(1.3); opacity: 1; }
+.light-band-track > div.is-marked { filter: saturate(1.06); opacity: 0.92; }
+
+/* ---------- 光的年轮 ---------- */
+.rings-wrap { padding: 0 0 2px; }
+.rings-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; margin-bottom: 6px;
+}
+.rings-peek { font-variant-numeric: tabular-nums; }
+.rings-canvas-wrap { overflow-x: auto; }
+.rings-canvas-wrap canvas { display: block; border-radius: 3px; }
+
+/* ---------- 分段切换 ---------- */
+.seg-wrap { display: flex; justify-content: center; }
+.seg {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--bg-hover); border-radius: 999px;
+}
+.seg-btn {
+  font-size: 12px; padding: 5px 14px; border-radius: 999px;
+  color: var(--text-muted); background: transparent; border: none;
+  transition: background 0.2s, color 0.2s;
+}
+.seg-btn.is-on { background: var(--bg-card); color: var(--accent); }
+
+/* ---------- 逐片花瓣行 ---------- */
+.dot-sm { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.petal-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 2px; border-bottom: 1px solid var(--border);
+  background: none; border-left: none; border-right: none; border-top: none;
+  text-align: left; font-size: 13px; color: var(--text-secondary);
+}
+.petal-row:last-of-type { border-bottom: none; }
+.petal-row[data-dormant='1'] { opacity: 0.72; }
+.petal-row-name { color: var(--text-primary); }
+.petal-row-stage { margin-left: auto; font-size: 12px; color: var(--accent); }
+.petal-row-share {
+  font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  min-width: 34px; text-align: right;
+}
+
+/* ---------- 周月对比 ---------- */
+.compare-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-secondary); }
+.compare-name { color: var(--text-primary); }
+.compare-num { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+/* ---------- 八瓣「现在 · 想要 · 约定」 ---------- */
+.intent-item { border-bottom: 1px solid var(--border); }
+.intent-item:last-child { border-bottom: none; }
+.intent-head {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 11px 2px; background: none; border: none; text-align: left;
+  font-size: 13px; color: var(--text-secondary);
+}
+.intent-name { color: var(--text-primary); }
+.intent-now { font-size: 12px; color: var(--accent); }
+.intent-want {
+  font-size: 11px; color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px;
+}
+.intent-pact-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+}
+.intent-caret { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.intent-body { padding: 2px 2px 14px; display: grid; gap: 10px; }
+.intent-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.intent-row.is-col { flex-direction: column; align-items: stretch; gap: 6px; }
+.intent-label { flex: 0 0 84px; color: var(--text-muted); }
+.intent-value { color: var(--text-primary); }
+.intent-sub { color: var(--text-muted); }
+.intent-slider { display: flex; align-items: center; gap: 9px; flex: 1; }
+.intent-slider input[type='range'] { flex: 1; accent-color: var(--accent); }
+.intent-slider-num {
+  font-variant-numeric: tabular-nums; color: var(--text-primary);
+  min-width: 18px; text-align: right;
+}
+.intent-clear {
+  font-size: 11px; color: var(--text-muted); background: none; border: none;
+  text-decoration: underline; text-decoration-style: dotted; padding: 2px 0;
+}
+.intent-clear:hover { color: var(--accent); }
+.intent-hint { font-size: 11px; line-height: 1.7; color: var(--text-muted); margin: 0; }
+.pact-form { display: grid; gap: 7px; }
+.pact-line { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); }
+.pact-line .input { flex: 1; font-size: 12px; padding: 6px 9px; }
+.pact-line select {
+  font-size: 12px; padding: 5px 8px; border-radius: 8px;
+  background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border);
+}
+
+/* ---------- 记录面板里的约定提示 / 跨零点归属 ---------- */
+.qa-pact, .qa-belongs {
+  font-size: 11px; line-height: 1.7; color: var(--text-secondary);
+  border-left: 2px solid var(--accent-dim); padding-left: 9px; margin: 0 0 12px;
+}
+
+/* ---------- 回归卡 ---------- */
+.return-card {
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);
+  padding: 12px 14px; position: relative;
+}
+.return-card p { margin: 0 0 4px; font-size: 13px; line-height: 1.75; color: var(--text-secondary); }
+.return-card .return-card-date { color: var(--text-muted); font-size: 12px; margin: 0; }
+.return-card-close {
+  position: absolute; right: 10px; top: 10px;
+  font-size: 11px; color: var(--text-muted); background: none; border: none;
+}
+
+/* ---------- 「光的分配」定格帧（进门的一眼） ---------- */
+.aha-anchor {
+  font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em;
+  margin: 0 0 10px; font-variant-numeric: tabular-nums;
+}
+/* 主句是字号最大的那一行 —— 它承担价值点 */
+.aha-fact {
+  margin: 0 0 18px; font-size: 21px; line-height: 1.55; letter-spacing: 0.02em;
+  color: var(--text-primary); text-wrap: balance;
+}
+/* 光河：22px。定格帧与常驻光带（10px）两档刻意拉开 */
+.aha-river {
+  position: relative; display: flex; gap: 2px; height: 22px;
+  border-radius: 11px; overflow: visible; background: var(--bg-hover);
+}
+.aha-river > span {
+  display: block; position: relative;
+  transition: flex-basis 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+              opacity 0.16s ease-out, filter 0.16s ease-out;
+  opacity: 0.92;
+}
+.aha-river > span:first-child { border-radius: 11px 0 0 11px; }
+.aha-river > span:last-child { border-radius: 0 11px 11px 0; }
+/* 反相：不给赢家加光，给其余七段减光。观众感知到的「这段在发光」是它周围暗下去了 */
+.aha-river.is-ebb > span { opacity: 0.28; filter: saturate(0.35); }
+.aha-river.is-ebb > span.is-gained { opacity: 1; filter: saturate(1.08); }
+/* 白底上唯一允许的「发光」：一条 1px 近白线，不是一团光 */
+.aha-glint {
+  position: absolute; left: 20%; right: 20%; top: 50%; height: 1px;
+  background: #fffdfd; opacity: 0.75; transform: scaleX(0);
+  transform-origin: center; animation: glint 0.66s ease-out forwards;
+}
+@keyframes glint {
+  0% { transform: scaleX(0); opacity: 0.75; }
+  40% { transform: scaleX(1); opacity: 0.75; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+/* 光粒：深色墨点。颜色取源花瓣植物色加深一档 —— **颜色就是名字** */
+.aha-ink {
+  position: absolute; left: 0; top: 0; width: 3.5px; height: 3.5px;
+  border-radius: 50%; opacity: 0.95; pointer-events: none;
+  margin-left: -1.75px; margin-top: -1.75px;
+}
+/* reduced-motion 的静态版：位移这件事仍然被画出来，不是只剩文字兜底 */
+.aha-static-arrow {
+  position: absolute; top: 50%; left: 12%; width: 76%; height: 1px;
+  opacity: 0.45; background-image: repeating-linear-gradient(90deg,
+    currentColor 0 3px, transparent 3px 6px);
+}
+/* 全屏恰好一个数字，右对齐成脚注 */
+.aha-one-number {
+  margin: 12px 0 0; text-align: right; font-size: 12px;
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.aha-exit { margin: 16px 0 0; font-size: 11px; color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .aha-river > span, .light-band-track > div { transition: none; }
+  .aha-glint { animation: none; opacity: 0; }
+}

@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useStore } from '../stores/useStore'
 import type { Dimension } from '../models/dimension'
 import type { Action } from '../models/action'
 import { lightShares } from '../engine/impression'
@@ -28,6 +29,20 @@ interface Props {
  *   一眼是一条光的分布带，不用读数字。
  */
 export function LightBand({ dimensions, actions, days = 7, label = '这周的光' }: Props) {
+  /**
+   * 回执层（v3.6）：刚拿到光的那一段做一次饱和度脉冲，然后停在 1.06 —— 它不是一次动画，
+   * 是一个**状态标记**。状态标记不会习惯化，因为它不是事件，是环境（小露二轮）。
+   * 通道必须是饱和度不是宽度：240ms 内 1px 的宽度变化人眼没有知觉。
+   */
+  const pulseDimId = useStore(s => s.pulseDimId)
+  const [pulsing, setPulsing] = useState(false)
+  useEffect(() => {
+    if (!pulseDimId) return
+    setPulsing(true)
+    const t = setTimeout(() => setPulsing(false), 240)
+    return () => clearTimeout(t)
+  }, [pulseDimId])
+
   const shares = useMemo(
     () => lightShares(dimensions, actions, Date.now() - days * DAY_MS),
     [dimensions, actions, days],
@@ -40,24 +55,26 @@ export function LightBand({ dimensions, actions, days = 7, label = '这周的光
     <div className="space-y-1.5" data-testid="light-band">
       <div className="flex items-baseline justify-between">
         <span className="text-xs text-[var(--text-muted)] tracking-wide">{label}</span>
-        <span className="text-xs text-[var(--text-muted)]">
-          {shares[0].name} {Math.round(shares[0].share * 100)}%
-        </span>
+        {/* 右上角原来写「首位花瓣 NN%」，v3.6 撤掉：日常路径零占比数字。
+            这里改成只报名字 —— 谁在最前面是形状，不是刻度 */}
+        <span className="text-xs text-[var(--text-muted)]">{shares[0].name} 最多</span>
       </div>
-      <div className="flex h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-hover)' }}>
-        {shares.map(s => (
-          <div
-            key={s.dimensionId}
-            title={`${s.name} ${Math.round(s.share * 100)}%`}
-            data-testid="light-band-seg"
-            data-dimension={s.name}
-            style={{
-              width: `${s.share * 100}%`,
-              backgroundColor: s.colorHex,
-              opacity: 0.75,
-            }}
-          />
-        ))}
+      {/* 🔴 不再给每段挂 title —— 鼠标一悬停八个百分比全出来，那是数字纪律的一个泄漏口
+          （小露二轮点名要删）。日常路径上一个占比数字都不许出现。 */}
+      <div className="light-band-track">
+        {shares.map(s => {
+          const isPulse = s.dimensionId === pulseDimId
+          return (
+            <div
+              key={s.dimensionId}
+              data-testid="light-band-seg"
+              data-dimension={s.name}
+              data-pulse={isPulse ? '1' : '0'}
+              className={isPulse ? (pulsing ? 'is-pulsing' : 'is-marked') : ''}
+              style={{ width: `${s.share * 100}%`, backgroundColor: s.colorHex }}
+            />
+          )
+        })}
       </div>
     </div>
   )

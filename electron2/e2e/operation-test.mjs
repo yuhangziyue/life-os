@@ -112,17 +112,25 @@ await phase('阶段 1：启动与首屏', async () => {
   check('electronAPI 桥接就绪', boot.hasAPI === true)
   // v3.5：七项收到三项（花 / 今天 / 我）。被收掉的四项里三项是数据库表摊在界面上，
   // 一项（维度管理）本身是设计失误 —— 花瓣才是维度入口。页面全都还在，只是不占导航位。
-  check('侧边栏三个导航项（v3.5 三入口）', boot.nav === 3, `nav=${boot.nav}`)
-  // 用「今日的花」而不是「每日看板」——后者在侧边栏里也有，走错页照样能匹配上
-  check('首屏落在每日看板', boot.text.includes('今日的花'), boot.text.slice(0, 40).replace(/\n/g, '/'))
+  // v3.6：侧栏已删，手机端底栏是唯一导航（全宽度生效）
+  const tabs = await p.eval(`
+    const bar = document.querySelector('[data-testid="mobile-tabbar"]')
+    return bar ? [...bar.querySelectorAll('a')].map(a => a.dataset.tab) : []
+  `)
+  check('底栏三个入口（今天 / 我的花园 / 我）',
+        tabs.length === 3 && tabs.join('|') === '今天|我的花园|我', tabs.join(' / '))
+  // v3.6：默认落地页是「今天」（子曰口径：第一个 tab 是今天）
+  check('首屏落在「今天」', boot.text.includes('我今天做的'), boot.text.slice(0, 40).replace(/\n/g, '/'))
   check('诊断脚手架已从界面移除', !boot.diagLeft)
 
   // 花形图在数据加载完成后的 useEffect 里才绘制，prod（file://）加载快，
-  // 固定等待可能赶在绘制前——轮询最多 5 秒
+  // 固定等待可能赶在绘制前——轮询最多 5 秒。
+  // v3.6：花在「我的花园」，不在默认落地页
+  await goto('#/garden')
   let radar = { painted: false, nonBlank: 0 }
   for (let tries = 0; tries < 10 && !radar.painted; tries++) {
     radar = await p.eval(`
-      const c = document.querySelector('canvas')
+      const c = document.querySelector('.flower-breathe canvas')
       if (!c) return { painted: false, nonBlank: 0 }
       const d = c.getContext('2d').getImageData(0,0,c.width,c.height).data
       let n = 0; for (let i=3;i<d.length;i+=4) if (d[i]>0) n++
@@ -131,11 +139,13 @@ await phase('阶段 1：启动与首屏', async () => {
     if (!radar.painted) await sleep(500)
   }
   check('花形图有实际绘制内容', radar.painted, `不透明像素=${radar.nonBlank}`)
-  await p.shot(`${SHOTS}/01-dashboard.png`)
+  await p.shot(`${SHOTS}/01-garden.png`)
+  await goto('#/')
 })
 
 // ======================================================================
 await phase('阶段 2：种子数据与初始分', async () => {
+  await goto('#/garden')   // v3.6：花形在「我的花园」
   const seed = await p.eval(`
     const [dims, branches, rubrics] = await Promise.all([
       window.electronAPI.dbDimensionsGetAll(),
@@ -164,8 +174,8 @@ await phase('阶段 2：种子数据与初始分', async () => {
 // ======================================================================
 await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留）', async () => {
   for (const [hash, expect, shot] of [
-    ['#/', '今日的花', '02-garden'],
-    ['#/today', '今天记了什么', '02b-today'],
+    ['#/', '我今天做的', '02-today'],
+    ['#/garden', '我的花园', '02b-garden'],
     ['#/me', '这座花园', '02c-me'],
     ['#/dimensions', '维度管理', '03-dimensions'],
     ['#/actions', '行动记录', '04-actions'],
@@ -185,29 +195,25 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
     await p.shot(`${SHOTS}/${shot}.png`)
   }
   await goto('#/')
-  // v3.5：侧栏只剩三项（花 / 今天 / 我）。被收掉的四项页面全都还在，
-  // 只是从导航层降到场景内部 —— 下面顺带验一遍「三项且只有三项」。
+  // v3.6：底栏是唯一导航。被收掉的四项页面全都还在，只是从导航层降到场景内部
   const nav = await p.eval(`
-    const links = [...document.querySelectorAll('aside a')]
-    const today = links.find(a => a.innerText.includes('今天'))
-    if (!today) return { found: false, labels: links.map(a => a.innerText.trim()) }
-    today.click()
-    return { found: true, count: links.length, labels: links.map(a => a.innerText.trim()) }
+    const links = [...document.querySelectorAll('[data-testid="mobile-tabbar"] a')]
+    const garden = links.find(a => a.dataset.tab === '我的花园')
+    if (!garden) return { found: false }
+    garden.click()
+    return { found: true, count: links.length }
   `)
   await sleep(900)
   const h = await p.eval(`return location.hash`)
-  check('侧边栏真实点击可跳转', nav.found && h.includes('/today'), `→ ${h}`)
-  check('导航只有三个入口（花 / 今天 / 我）',
-        nav.count === 3, `${nav.count} 项：${(nav.labels || []).join(' / ')}`)
+  check('底栏真实点击可跳转', nav.found && h.includes('/garden'), `→ ${h}`)
 
-  // 二级页出口：花 → 细看数据 / 周对账，今天 → 全部记录，我 → 花语
-  await goto('#/')
+  // 二级页出口：我的花园 → 细看数据 / 周对账，今天 → 全部记录，我 → 花语
   const drawers = await p.eval(`return {
     stats: !!document.querySelector('[data-testid="link-stats"]'),
     review: !!document.querySelector('[data-testid="link-review"]'),
   }`)
-  check('「花」上有细看数据与周对账两个二级出口', drawers.stats && drawers.review, JSON.stringify(drawers))
-  await goto('#/today')
+  check('「我的花园」上有细看数据与周对账两个二级出口', drawers.stats && drawers.review, JSON.stringify(drawers))
+  await goto('#/')
   check('「今天」上有全部记录出口',
         await p.eval(`return !!document.querySelector('[data-testid="link-actions"]')`))
   await goto('#/me')
@@ -221,13 +227,13 @@ await phase('阶段 4：快速记录（核心写入链路）', async () => {
   baselineActions = await p.eval(`return (await window.electronAPI.dbActionsGetAll()).length`)
 
   const open = await p.eval(`
-    const b = [...document.querySelectorAll('button')].find(x => x.innerText.includes('+ 快速记录'))
+    const b = document.querySelector('[data-testid="mobile-fab"]')
     if (!b) return { found: false }
     b.click(); return { found: true }
   `)
   await sleep(700)
   const panel = await p.eval(`return { input: !!document.querySelector('input[placeholder^="做了什么"]') }`)
-  check('「+ 快速记录」打开面板', open.found && panel.input)
+  check('记一笔 FAB 打开面板', open.found && panel.input)
   await p.shot(`${SHOTS}/08-quickadd-open.png`)
 
   const filled = await p.eval(`
@@ -294,39 +300,28 @@ await phase('阶段 4：快速记录（核心写入链路）', async () => {
   check('行动回响出现且点名维度', echo.shown && echo.text.includes('身心健康'),
         echo.shown ? echo.text.replace(/\n/g, ' / ').slice(0, 80) : '没有出现')
 
-  // —— v3.5 M5「光的分配」：记录后的那一屏必须给出占比事实，而不是一句表扬 ——
-  const aha = await p.eval(`
-    const el = document.querySelector('[data-testid="light-shift"]')
-    if (!el) return { shown: false }
-    return {
-      shown: true,
-      segs: document.querySelectorAll('[data-testid="aha-band-seg"]').length,
-      deltas: document.querySelector('[data-testid="aha-deltas"]')?.innerText || '',
-      fact: document.querySelector('[data-testid="aha-fact"]')?.innerText || '',
-      hasAgain: !!document.querySelector('[data-testid="echo-again"]'),
-    }
-  `)
-  check('「光的分配」那一屏出现', aha.shown)
-  check('光带按占比分段（至少一段）', aha.segs >= 1, `${aha.segs} 段`)
-  check('给出占比变化的事实（X% → Y%）', /\d+%\s*→\s*\d+%/.test(aha.deltas.replace(/\n/g, ' ')),
-        aha.deltas.replace(/\n/g, ' ').slice(0, 80))
-  check('定格句是归属而非评价（「你分给了 X」，且无表扬词）',
-        /今天的光，你分给了.+。/.test(aha.fact) && !/真棒|加油|做得好|恭喜|进步/.test(aha.fact),
-        aha.fact)
-  check('那一屏带「再记一条」入口', aha.hasAgain === true)
+  // —— v3.6：提交后**不弹定格帧**（第五轮圆桌：每次都演等于没演）——
+  //    提交路径上只剩：光带 in-place 回执 + 角落回响。定格帧攒到下次进门再播。
+  const afterSubmit = await p.eval(`return {
+    frame: !!document.querySelector('[data-testid="aha-frame"]'),
+    toast: !!document.querySelector('[data-testid="echo-toast"]'),
+    pulsed: !!document.querySelector('[data-testid="light-band-seg"][data-pulse="1"]'),
+  }`)
+  check('🔴 提交后不弹定格帧（追求触发被掐死的前提）', afterSubmit.frame === false)
+  check('提交后只给角落回响', afterSubmit.toast === true)
   await p.shot(`${SHOTS}/10-after-add.png`)
   await p.eval(`document.querySelector('[data-testid="echo-toast"]')?.click(); return 1`)
   await sleep(300)
 
-  // 记录落在「今天」页上（今日行动列表随 IA 迁到了那一屏）
-  await goto('#/today')
+  // 记录落在「今天」页上
+  await goto('#/')
   check('「今天」页即时显示新行动',
         await p.eval(`return document.body.innerText.includes('晨跑')`))
-  await goto('#/')
 })
 
 // ======================================================================
 await phase('阶段 5：评分引擎联动', async () => {
+  await goto('#/garden')   // v3.6：花形与分数都在「我的花园」
   // 期望值从 DB 现算：dev 库与真实使用是同一个库，写死数字必被日常数据污染
   const s = await p.eval(`
     const dims = await window.electronAPI.dbDimensionsGetAll()
@@ -702,7 +697,7 @@ await phase('阶段 10.3：花园任务（目标提醒 + 一键完成 + 回响�
     return id
   `)
   await reload()
-  await goto('#/today')          // v3.5：轻推与一瞥都在「今天」这一屏
+  await goto('#/')               // v3.6：轻推与一瞥都在「今天」这一屏，而「今天」就是默认落地页
   const card = await p.eval(`return {
     shown: !!document.querySelector('[data-testid="garden-tasks"]'),
     hasGoalTask: document.body.innerText.includes('操作测试目标'),
@@ -745,7 +740,8 @@ await phase('阶段 10.3：花园任务（目标提醒 + 一键完成 + 回响�
 })
 
 // ======================================================================
-await phase('阶段 10.4：主题切换（暗夜 ↔ 禅意茶室 ↔ 花间集）', async () => {
+await phase('阶段 10.4：主题切换（花间集 ↔ 暗夜花园 ↔ 禅意茶室）', async () => {
+  await goto('#/garden')   // v3.6：花形在「我的花园」
   const initialTheme = await p.eval(`return localStorage.getItem('lifeos:theme') || 'night'`)
 
   await goto('#/settings')
@@ -761,10 +757,11 @@ await phase('阶段 10.4：主题切换（暗夜 ↔ 禅意茶室 ↔ 花间集�
         JSON.stringify(dawn))
   await p.shot(`${SHOTS}/17-settings-dawn.png`)
 
-  // 亮色下看板花形图照常绘制
-  await goto('#/')
+  // 亮色下花形图照常绘制（v3.6：花在「我的花园」）
+  await goto('#/garden')
+  await sleep(700)
   const dawnFlower = await p.eval(`
-    const c = document.querySelector('canvas')
+    const c = document.querySelector('.flower-breathe canvas')
     if (!c) return { painted: false }
     const d = c.getContext('2d').getImageData(0,0,c.width,c.height).data
     let n = 0; for (let i=3;i<d.length;i+=4) if (d[i]>0) n++
@@ -893,11 +890,8 @@ await phase('阶段 10.6：主题化指针 + 氛围开关（v3.1 A1/A3）', asyn
 
 // ======================================================================
 await phase('阶段 10.7：感受随手记（v3.1 C1）', async () => {
-  await goto('#/')
-  await p.eval(`
-    const b = [...document.querySelectorAll('button')].find(x => x.innerText.includes('+ 快速记录'))
-    if (b) b.click(); return 1
-  `)
+  await goto('#/')   // FAB 全局常驻，先回默认页避免上一个用例留下的浮层
+  await p.eval(`document.querySelector('[data-testid="mobile-fab"]')?.click(); return 1`)
   await sleep(600)
   await p.eval(`
     ${HELPERS}
@@ -998,9 +992,11 @@ await phase('阶段 10.8：身份宣言（v3.1 C2）', async () => {
 
 // ======================================================================
 await phase('阶段 10.9：陪伴天数 / 时光机 / 热力图柔化（v3.1 C3/C4/C6）', async () => {
-  await goto('#/')
-  const side = await p.eval(`return document.body.innerText.match(/这朵花陪了你 (\\d+) 天/)?.[1] || null`)
-  check('侧栏出现陪伴天数（永不清零口径）', side !== null && Number(side) >= 1, `陪伴 ${side} 天`)
+  await goto('#/garden')
+  const side = await p.eval(`
+    return document.querySelector('[data-testid="companion-days"] .metric-value')?.innerText || null
+  `)
+  check('「我的花园」出现陪伴天数（永不清零口径）', side !== null && Number(side) >= 1, `陪伴 ${side} 天`)
 
   await goto('#/stats')
   const stats = await p.eval(`return {
@@ -1219,6 +1215,7 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
 
 // ======================================================================
 await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async () => {
+  await goto('#/garden')   // v3.6：花形与会谈入口都在「我的花园」
   // 会谈会改写维度分数与焦点，测完必须原样还原用户数据
   const backup = await p.eval(`
     const dims = await window.electronAPI.dbDimensionsGetAll()
@@ -1452,7 +1449,7 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
 
 // ======================================================================
 await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
-  await goto('#/today')         // v3.5：今日一瞥在「今天」这一屏
+  await goto('#/')              // v3.6：今日一瞥在「今天」，也就是默认落地页
   await sleep(900)
 
   // —— T3 今日账本一瞥：一天一条，三类之一，且绝不出现催办语气 ——
@@ -1474,7 +1471,7 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
   }
 
   // —— T3 光带：近 7 天零记录时正确地不渲染（空账不摆空带子当摆设）——
-  await goto('#/')              // v3.5：光带跟花在同一屏
+  await goto('#/garden')        // v3.6：光带跟花都在「我的花园」
   await sleep(600)
   const bandEmpty = await p.eval(`
     const recent = (await window.electronAPI.dbActionsGetAll())
@@ -1490,7 +1487,7 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
   // 「社交关系」在前面各阶段没被写过，这里连记两条：第 2 条必然满足「本季第 2 次」
   const ledgerTexts = []
   for (let i = 0; i < 2; i++) {
-    await p.eval(`${HELPERS}; window.__t.byText('button', '+ 快速记录').click(); return 1`)
+    await p.eval(`document.querySelector('[data-testid="mobile-fab"]').click(); return 1`)
     await sleep(600)
     await p.eval(`${HELPERS}; window.__t.byText('button', '社交关系').click(); return 1`)
     await sleep(400)
@@ -1540,7 +1537,7 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
     return 1
   `)
   await reload()
-  await goto('#/')
+  await goto('#/garden')          // v3.6：光带跟花都在「我的花园」
   await sleep(900)
   const band = await p.eval(`
     const segs = [...document.querySelectorAll('[data-testid="light-band-seg"]')]
@@ -1595,7 +1592,7 @@ await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', as
   await sleep(800)
 
   // —— T7 维度智能排序：沉睡的排最后，但绝不隐藏 ——
-  await p.eval(`${HELPERS}; window.__t.byText('button', '+ 快速记录').click(); return 1`)
+  await p.eval(`document.querySelector('[data-testid="mobile-fab"]').click(); return 1`)
   await sleep(600)
   const order = await p.eval(`
     const chips = [...document.querySelectorAll('[data-testid="qa-dimensions"] button')]
@@ -1692,6 +1689,9 @@ await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', as
         [3,4,5,6,7,8,9,10,11,12,1,2].includes(seasonal.month), `月份=${seasonal.month}`)
 
   // —— T9 月度微校准：未到 30 天不出现；伪造 31 天前的锚点后出现 ——
+  // 🔴 必须在「我的花园」判 —— 在「今天」页它恒为 true，那是假过
+  await goto('#/garden')
+  await sleep(700)
   const notDue = await p.eval(`return !!document.querySelector('[data-testid="monthly-checkin"]')`)
   check('未满 30 天时月度微校准不出现（不催办）', !notDue, `出现=${notDue}`)
 
@@ -1711,7 +1711,7 @@ await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', as
     return 1
   `)
   await reload()
-  await goto('#/')
+  await goto('#/garden')          // v3.6：结算区（月度微校准 / 季度邀请）在「我的花园」
   await sleep(1000)
   const due = await p.eval(`
     const el = document.querySelector('[data-testid="monthly-checkin"]')
@@ -1772,123 +1772,280 @@ await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', as
 
 // ======================================================================
 // ======================================================================
-await phase('阶段 10.14：三入口 · 花瓣导航 · 移动端形态（v3.5 M1/M2/M4/M6/M7）', async () => {
-  await goto('#/')
-  await sleep(700)
+await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门定格帧（v3.6）', async () => {
+  // ---- 「我的花园」三个板块 ----
+  await goto('#/garden')
+  await sleep(800)
 
-  // —— M2 三个指标：只留三个，中间那个是北极星（连续记录周）——
-  const metrics = await p.eval(`
-    const box = document.querySelector('[data-testid="garden-metrics"]')
-    if (!box) return { shown: false }
-    const cells = [...box.querySelectorAll('.metric-cell')]
+  const garden = await p.eval(`
+    const box = document.querySelector('[data-testid="time-summary"]')
+    const cells = box ? [...box.querySelectorAll('.metric-cell')] : []
     return {
-      shown: true,
-      count: cells.length,
+      rings: !!document.querySelector('[data-testid="light-rings"]'),
+      shape: document.querySelector('[data-testid="shape-summary"]')?.innerText || '',
+      cells: cells.length,
       keys: cells.map(c => c.querySelector('.metric-key')?.innerText.trim()),
-      starIsSecond: cells[1]?.classList.contains('is-star'),
-      weeks: Number(document.querySelector('[data-testid="metric-weeks"] .metric-value')?.innerText || '-1'),
+      recorded: Number(document.querySelector('[data-testid="metric-recorded"] .metric-value')?.innerText || '-1'),
+      switcher: !!document.querySelector('[data-testid="garden-view-switch"]'),
+      petals: document.querySelectorAll('[data-testid="petal-row"]').length,
     }
   `)
-  check('「花」上有三个指标且只有三个', metrics.shown && metrics.count === 3,
-        `${metrics.count} 个：${(metrics.keys || []).join(' / ')}`)
-  check('北极星（连续记录周）在正中间', metrics.starIsSecond === true)
-  check('连续记录周算得出来（本周有记录 ⇒ ≥1）', metrics.weeks >= 1, `${metrics.weeks} 周`)
+  check('板块⓿ 光的年轮在场（九十天固定窗口）', garden.rings === true)
+  check('板块① 一句小概括是形状不是分数',
+        garden.shape.length > 0 && !/\d+(\.\d+)?\s*分/.test(garden.shape), garden.shape)
+  check('板块② 时间汇总三个数（陪伴天数 / 记过的天 / 一共几笔）',
+        garden.cells === 3, `${garden.cells} 个：${(garden.keys || []).join(' / ')}`)
+  check('有记录的天数算得出来', garden.recorded >= 1, `${garden.recorded} 天`)
+  check('板块③ 有「八片花瓣 ⇄ 周月对比」切换', garden.switcher === true)
+  check('八片花瓣逐片在场（沉睡的排后但不隐藏）', garden.petals === 8, `${garden.petals} 行`)
 
-  // —— M2 首页分层红线：形态与状态词在，精确分数不上首屏 ——
-  const layered = await p.eval(`
-    const t = document.querySelector('main')?.innerText || ''
-    return { hasStage: /含苞|萌芽|舒展|盛放/.test(t), hasExact: /综合 \d\.\d/.test(t) }
+  // 数字纪律：日常光带上不许出现占比数字，也不许挂 title 泄漏
+  const bandLeak = await p.eval(`
+    const segs = [...document.querySelectorAll('[data-testid="light-band-seg"]')]
+    return { withTitle: segs.filter(s => s.getAttribute('title')).length, count: segs.length }
   `)
-  check('「花」上出状态词、不出精确综合分', layered.hasStage && !layered.hasExact, JSON.stringify(layered))
+  check('🔴 常驻光带不挂 title（八个百分比不许一悬停全出来）',
+        bandLeak.withTitle === 0, `${bandLeak.withTitle}/${bandLeak.count} 段带 title`)
 
-  // —— M7 花瓣即导航：八个热区，点一片弹出该维度面板 ——
+  // 周月对比：不许出现箭头与「进步」
+  await p.eval(`document.querySelector('[data-view="compare"]').click(); return 1`)
+  await sleep(500)
+  const cmp = await p.eval(`
+    const el = document.querySelector('[data-testid="period-compare"]')
+    return { shown: !!el, text: el?.innerText || '', modes: el?.querySelectorAll('[data-mode]').length || 0 }
+  `)
+  check('周月对比可切出来，且有按周/按月两档', cmp.shown && cmp.modes === 2, `${cmp.modes} 档`)
+  check('🔴 对比里不出现箭头，也不出现「进步」（占比模型里它是数学伪概念）',
+        !/[→↑↓]/.test(cmp.text) && !/进步|提升|改善/.test(cmp.text),
+        cmp.text.replace(/\n/g, ' / ').slice(0, 90))
+  await p.shot(`${SHOTS}/24-garden.png`)
+
+  // ---- M7 花瓣即导航 ----
+  await p.eval(`document.querySelector('[data-view="petals"]').click(); return 1`)
+  await sleep(400)
   const petals = await p.eval(`
     const hits = [...document.querySelectorAll('[data-testid="petal-hit"]')]
     const health = hits.find(b => b.dataset.dimension === '身心健康')
-    if (!health) return { count: hits.length, clicked: false }
-    health.click()
-    return { count: hits.length, clicked: true }
+    if (health) health.click()
+    return { count: hits.length, clicked: !!health }
   `)
   await sleep(500)
   const sheet = await p.eval(`
     const el = document.querySelector('[data-testid="dimension-sheet"]')
-    return el
-      ? { shown: true, text: el.innerText.slice(0, 60),
-          hasAdd: !!document.querySelector('[data-testid="sheet-quick-add"]'),
-          href: document.querySelector('[data-testid="sheet-detail-link"]')?.getAttribute('href') || '' }
-      : { shown: false }
+    return el ? { shown: true, text: el.innerText.slice(0, 40) } : { shown: false }
   `)
   check('八片花瓣都是可点热区', petals.count === 8, `${petals.count} 个热区`)
-  check('点花瓣弹出该维度面板（取代「维度管理」那一栏）',
-        sheet.shown && sheet.text.includes('身心健康'), (sheet.text || '').replace(/\n/g, '/'))
-  check('面板给出「记一笔到这片」与完整页出口',
-        sheet.hasAdd && /#\/dimensions\//.test(sheet.href), `href=${sheet.href}`)
-  await p.shot(`${SHOTS}/24-petal-sheet.png`)
+  check('点花瓣弹出该维度面板', sheet.shown && sheet.text.includes('身心健康'),
+        (sheet.text || '').replace(/\n/g, '/'))
   await p.eval(`document.querySelector('[data-testid="dimension-sheet"]')?.click(); return 1`)
   await sleep(300)
 
-  // —— M4「我」：身份卡在场 ——
+  // ---- 「我」页：八瓣的现在 / 想要开到哪 / 约定 ----
   await goto('#/me')
+  await sleep(700)
   const me = await p.eval(`return {
     identity: !!document.querySelector('[data-testid="identity-card"]'),
-    about: !!document.querySelector('[data-testid="about-section"]'),
+    intent: !!document.querySelector('[data-testid="petal-intent"]'),
+    items: document.querySelectorAll('[data-testid="intent-item"]').length,
     theme: !!document.querySelector('[data-testid="theme-section"]'),
+    about: !!document.querySelector('[data-testid="about-section"]'),
   }`)
-  check('「我」上有身份卡 / 主题 / 关于三段', me.identity && me.theme && me.about, JSON.stringify(me))
-  await p.shot(`${SHOTS}/25-me.png`)
+  check('「我」上有身份卡 / 八瓣编辑 / 主题 / 关于', me.identity && me.intent && me.theme && me.about,
+        JSON.stringify(me))
+  check('八瓣逐片可展开', me.items === 8, `${me.items} 片`)
 
-  // —— M1/M6 窄屏形态：底栏出、侧栏隐、FAB 出、记录面板变八宫格 ——
-  await p.send('Emulation.setDeviceMetricsOverride',
-    { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
-  await goto('#/')
-  await sleep(800)
-  const mobile = await p.eval(`
-    const bar = document.querySelector('[data-testid="mobile-tabbar"]')
-    const aside = document.querySelector('aside')
-    const fab = document.querySelector('[data-testid="mobile-fab"]')
-    const vis = el => !!el && getComputedStyle(el).display !== 'none'
+  // 目标分落库（v5 迁移）+ 调低时那句不是安慰而是分配
+  const target = await p.eval(`
+    ${HELPERS}
+    const item = [...document.querySelectorAll('[data-testid="intent-item"]')]
+      .find(el => el.dataset.dimension === '身心健康')
+    item.querySelector('.intent-head').click()
+    await new Promise(r => setTimeout(r, 300))
+    const slider = item.querySelector('[data-testid="target-slider"]')
+    // 🔴 必须设成与当前值不同的数：React 的值追踪器认为没变就不会触发 onChange，
+    //    而滑块默认值是 ceil(currentScore)。设 1 同时满足「有变化」与「低于现在分」。
+    window.__t.type(slider, '1')
+    await new Promise(r => setTimeout(r, 900))
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const d = dims.find(x => x.name === '身心健康')
+    return { saved: d.targetScore, lower: !!item.querySelector('[data-testid="target-lower"]'),
+             lowerText: item.querySelector('[data-testid="target-lower"]')?.innerText || '' }
+  `)
+  check('目标分落库（迁移 v5 的 targetScore）', target.saved === 1, `targetScore=${target.saved}`)
+  check('目标低于现在时给的是「分配」不是安慰',
+        target.lower && /分配/.test(target.lowerText) && !/不是放弃|别灰心|没关系/.test(target.lowerText),
+        target.lowerText)
+
+  // 约定三件套落库（v6 迁移），且不含任何完成态
+  const pact = await p.eval(`
+    ${HELPERS}
+    const item = [...document.querySelectorAll('[data-testid="intent-item"]')]
+      .find(el => el.dataset.dimension === '身心健康')
+    window.__t.select(item.querySelector('[data-testid="pact-timing"]'), '周三')
+    await new Promise(r => setTimeout(r, 600))
+    const anchor = item.querySelector('[data-testid="pact-anchor"]')
+    window.__t.type(anchor, '吃完晚饭')
+    anchor.dispatchEvent(new Event('blur', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 700))
+    const txt = item.querySelector('[data-testid="pact-text"]')
+    window.__t.type(txt, '走二十分钟')
+    txt.dispatchEvent(new Event('blur', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 900))
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const d = dims.find(x => x.name === '身心健康')
     return {
-      tabs: bar ? bar.querySelectorAll('a').length : 0,
-      barVisible: vis(bar),
-      asideHidden: !vis(aside),
-      fabVisible: vis(fab),
-      fabSize: fab ? Math.round(fab.getBoundingClientRect().width) : 0,
+      timing: d.pactTiming, anchor: d.pactAnchor, text: d.pactText,
+      preview: item.querySelector('[data-testid="pact-preview"]')?.innerText || '',
+      bodyText: document.querySelector('[data-testid="petal-intent"]').innerText,
     }
   `)
-  check('窄屏出底栏三入口', mobile.barVisible && mobile.tabs === 3, JSON.stringify(mobile))
-  check('窄屏侧栏收起（不为移动端 fork，只换呈现）', mobile.asideHidden === true)
-  check('窄屏记一笔是常驻 FAB 且 ≥44px 触控热区',
-        mobile.fabVisible && mobile.fabSize >= 44, `${mobile.fabSize}px`)
-  await p.shot(`${SHOTS}/26-mobile-garden.png`)
+  check('约定三件套落库（迁移 v6）',
+        pact.timing === '周三' && pact.anchor === '吃完晚饭' && pact.text === '走二十分钟',
+        JSON.stringify(pact).slice(0, 100))
+  check('约定预览是执行意图句式（时机 + 锚点 + 那件事）',
+        /每个周三，吃完晚饭之后，我去走二十分钟。/.test(pact.preview), pact.preview.slice(0, 60))
+  check('🔴 约定面上没有完成态 / 进度 / 完成率（一有裁判它就变任务）',
+        !/完成率|已完成|未完成|\d+\/\d+|进度/.test(pact.bodyText))
+  await p.shot(`${SHOTS}/25-me-intent.png`)
 
-  const grid = await p.eval(`
+  // 约定的上下文内自我提示：只在记录面板里选中这片花瓣时出现
+  await goto('#/')
+  await sleep(500)
+  const ctx = await p.eval(`
     document.querySelector('[data-testid="mobile-fab"]').click()
     await new Promise(r => setTimeout(r, 600))
-    const box = document.querySelector('[data-testid="qa-dimensions"]')
-    if (!box) return { open: false }
-    const cs = getComputedStyle(box)
-    const cells = [...box.querySelectorAll('button')]
-    const h = cells.length ? Math.round(cells[0].getBoundingClientRect().height) : 0
-    const focused = document.activeElement?.tagName
-    return {
-      open: true,
-      cols: cs.gridTemplateColumns.split(' ').length,
-      cells: cells.length,
-      cellH: h,
-      focused,
-    }
+    const before = !!document.querySelector('[data-testid="qa-pact"]')
+    const chip = [...document.querySelectorAll('[data-testid="qa-dimensions"] button')]
+      .find(b => b.dataset.dimension === '身心健康')
+    chip.click()
+    await new Promise(r => setTimeout(r, 400))
+    const after = document.querySelector('[data-testid="qa-pact"]')?.innerText || ''
+    return { before, after }
   `)
-  check('FAB 打开记录面板', grid.open === true)
-  check('窄屏维度是四列八宫格', grid.cols === 4, `${grid.cols} 列 / ${grid.cells} 格`)
-  check('每格 ≥64px（触控热区）', grid.cellH >= 64, `${grid.cellH}px`)
-  check('窄屏不自动聚焦输入框（否则键盘顶掉八宫格，两击就不成立）',
-        grid.focused !== 'INPUT', `activeElement=${grid.focused}`)
-  await p.shot(`${SHOTS}/27-mobile-quickadd.png`)
-
+  check('约定不主动出现（没选中这片时面板上没有它）', ctx.before === false)
+  check('选中这片花瓣时它自己出现（上下文内自我提示，不是推送）',
+        /每个周三/.test(ctx.after), ctx.after.slice(0, 50))
   await p.eval(`document.querySelector('.qa-scrim')?.click(); return 1`)
   await sleep(300)
-  await p.send('Emulation.clearDeviceMetricsOverride')
+
+  // 清理：把约定与目标撤掉，别污染后续用例与真实库
+  await p.eval(`
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const d = dims.find(x => x.name === '身心健康')
+    await window.electronAPI.dbDimensionsUpdate(d.id,
+      { targetScore: null, pactTiming: '', pactAnchor: '', pactText: '' })
+    return 1
+  `)
+  await sleep(400)
+})
+
+// ======================================================================
+// ======================================================================
+await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 核心）', async () => {
+  // 清场：把 Aha 的闸门状态与待播载荷清空，让这一轮从干净状态开始
+  await p.eval(`
+    await window.electronAPI.dbEventsClearPrefix('aha_')
+    await window.electronAPI.dbSettingsSet('ahaPending', '')
+    return 1
+  `)
   await goto('#/')
+  await sleep(600)
+
+  const hour = new Date().getHours()
+  const isNight = hour >= 22 || hour < 5
+
+  // 记一笔（走真实 UI 路径）
+  await p.eval(`
+    document.querySelector('[data-testid="mobile-fab"]').click()
+    await new Promise(r => setTimeout(r, 600))
+    const chip = [...document.querySelectorAll('[data-testid="qa-dimensions"] button')]
+      .find(b => b.dataset.dimension === '休闲娱乐')
+    chip.click()
+    await new Promise(r => setTimeout(r, 300))
+    const input = document.querySelector('input[placeholder^="做了什么"]')
+    input.value = 'Aha 通道验证'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 200))
+    const submit = [...document.querySelectorAll('button')].find(b => b.innerText.includes('⌘↵'))
+    submit.click()
+    return 1
+  `)
+  await sleep(2200)
+
+  const submitted = await p.eval(`
+    return {
+      frame: !!document.querySelector('[data-testid="aha-frame"]'),
+      pending: (await window.electronAPI.dbSettingsGet('ahaPending')) || '',
+      pulsed: document.querySelectorAll('[data-testid="light-band-seg"][data-pulse="1"]').length,
+    }
+  `)
+  check('🔴 提交后不弹定格帧', submitted.frame === false)
+  if (isNight) {
+    // Lisa 定的唯一「只减不加」时段：深夜不攒定格帧，且不落事件行 ⇒ 不消耗冷却
+    check('深夜提交不攒定格帧（静音档）', submitted.pending === '', `深夜 ${hour} 点`)
+  } else {
+    check('白天提交把定格帧攒起来（等下次进门播）',
+          submitted.pending.length > 0 && submitted.pending.includes('light_shift'),
+          submitted.pending.slice(0, 40))
+  }
+
+  // 进门：重载一次，定格帧应当在首帧就在（载荷在 loadData 里已取好，不会闪）
+  await reload()
+  await sleep(1200)
+  const frame = await p.eval(`
+    const el = document.querySelector('[data-testid="aha-frame"]')
+    if (!el) return { shown: false }
+    const fact = document.querySelector('[data-testid="aha-fact"]')?.innerText || ''
+    const num = document.querySelector('[data-testid="aha-number"]')?.innerText || ''
+    return {
+      shown: true, fact, num,
+      segs: document.querySelectorAll('[data-testid="aha-band-seg"]').length,
+      inks: document.querySelectorAll('[data-testid="aha-ink"]').length,
+      anchor: document.querySelector('[data-testid="aha-anchor"]')?.innerText || '',
+      allText: el.innerText,
+      // 全屏占比数字个数：只许一个
+      pctCount: (el.innerText.match(/\d+%/g) || []).length,
+    }
+  `)
+
+  if (isNight) {
+    check('深夜进门也不播定格帧（进门这一刻同样收声）', frame.shown === false, `深夜 ${hour} 点`)
+  } else {
+    check('进门的一眼：定格帧出现', frame.shown === true)
+    if (frame.shown) {
+      check('光河八段在场', frame.segs >= 2, `${frame.segs} 段`)
+      check('三粒墨点（不是八粒 —— 三个可数的实体才能归因到花瓣）',
+            frame.inks >= 1 && frame.inks <= 3, `${frame.inks} 粒`)
+      check('带日期锚（定格帧移到进门后，因果链需要它）',
+            frame.anchor.length > 0, frame.anchor)
+      check('主句动词是「分」，不出现「挪」「让」',
+            /分/.test(frame.fact) && !/挪|让/.test(frame.fact), frame.fact)
+      check('主句无表扬词、无感叹号',
+            !/真棒|恭喜|加油|做得好|进步|坚持/.test(frame.fact) && !/[!！]/.test(frame.fact), frame.fact)
+      check('🔴 全屏恰好一个占比数字', frame.pctCount === 1, `${frame.pctCount} 个：${frame.num}`)
+      check('🔴 零箭头（方向符号即评价符号）', !/[→↑↓]/.test(frame.allText))
+      await p.shot(`${SHOTS}/26-aha-entry.png`)
+
+      // 收起，再进门一次 —— 每天上限 1 条，不该再来
+      await p.eval(`document.querySelector('[data-testid="aha-frame"]').click(); return 1`)
+      await sleep(400)
+      await reload()
+      await sleep(1200)
+      check('每天只播一次（当天再进门不再补）',
+            await p.eval(`return !document.querySelector('[data-testid="aha-frame"]')`))
+    }
+  }
+
+  // 清理测试数据
+  await p.eval(`
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows.filter(x => (x.description || '').includes('Aha 通道验证'))) {
+      await window.electronAPI.dbActionsDelete(r.id)
+    }
+    await window.electronAPI.dbEventsClearPrefix('aha_')
+    await window.electronAPI.dbSettingsSet('ahaPending', '')
+    return 1
+  `)
   await sleep(600)
 })
 

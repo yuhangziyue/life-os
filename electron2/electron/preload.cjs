@@ -62,6 +62,10 @@ try {
     dbSnapshotsGetAll: () => ipcRenderer.invoke('db:snapshots:getAll'),
     dbSnapshotsAdd: (row) => ipcRenderer.invoke('db:snapshots:add', row),
     dbEventsLog: (name) => ipcRenderer.invoke('db:events:log', name),
+    dbEventsHas: (name) => ipcRenderer.invoke('db:events:has', name),
+    dbEventsHasSince: (name, since) => ipcRenderer.invoke('db:events:hasSince', name, since),
+    dbEventsCountSince: (name, since) => ipcRenderer.invoke('db:events:countSince', name, since),
+    dbEventsClearPrefix: (prefix) => ipcRenderer.invoke('db:events:clearPrefix', prefix),
 
     appDbPath: () => ipcRenderer.invoke('app:dbPath'),
 

@@ -155,6 +155,10 @@ function registerIPC() {
   ipcMain.handle('db:snapshots:getAll', () => { log('[IPC] db:snapshots:getAll'); return db.getSnapshots() })
   ipcMain.handle('db:snapshots:add', (_e, row) => { log('[IPC] db:snapshots:add', row.weekKey); db.addSnapshot(row); return true })
   ipcMain.handle('db:events:log', (_e, name) => { log('[IPC] db:events:log', name); db.logEvent(name); return true })
+  ipcMain.handle('db:events:has', (_e, name) => db.hasEvent(name))
+  ipcMain.handle('db:events:hasSince', (_e, name, since) => db.hasEventSince(name, since))
+  ipcMain.handle('db:events:countSince', (_e, name, since) => db.countEventsSince(name, since))
+  ipcMain.handle('db:events:clearPrefix', (_e, prefix) => db.clearEventsByPrefix(prefix))
 
   // 关于面板要把「数据在哪」如实报出来 —— 承诺得能被用户当场核对，不能靠界面上硬写一句话
   ipcMain.handle('app:dbPath', () => path.join(app.getPath('userData'), 'life-os.sqlite'))

@@ -42,6 +42,16 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
    */
   const narrow = typeof window !== 'undefined' && window.innerWidth <= NARROW_PX
 
+  /**
+   * 跨零点归属（v3.6，Lisa 二轮）：00:00–04:00 提交的记录默认归**前一天**。
+   * 深夜三点提交的人，心理上还在昨天没结束的那件事里 ——
+   * 这一个字段级的决定，比任何一句温柔的话都得体。
+   * 🔴 但**归属可以默认，不能隐藏**（小艾）：静默改归属会让用户日后对不上账，
+   *    而这个产品全部的价值就建立在账本可信上。所以面板上明写一行。
+   */
+  const nowHour = new Date().getHours()
+  const belongsToYesterday = nowHour >= 0 && nowHour < 4
+
   // 「再记一条」带过来的预选维度
   useEffect(() => {
     if (open && quickAddPreset) {
@@ -78,7 +88,7 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
       || (branch ? branch.name : `为「${dim?.name ?? '这片花瓣'}」做了一件小事`)
 
     await addAction({
-      date: startOfToday(),
+      date: belongsToYesterday ? startOfToday() - 86400000 : startOfToday(),
       descriptionText: text,
       impact: QUALITY_IMPACT[quality],
       quality,
@@ -111,6 +121,11 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
       <div className="qa-panel card animate-fade-in" onClick={e => e.stopPropagation()}>
         <div className="sheet-grip qa-grip" />
         <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">快速记录</h3>
+        {belongsToYesterday && (
+          <p className="qa-belongs" data-testid="qa-belongs">
+            已经是新的一天了，这条记在昨天。
+          </p>
+        )}
 
         {/* 维度选择。选中态用该维度自己的植物色实心填充——
             原来只是一圈 1px 描边 + 文字变色，在三套主题里都看不出选了哪片花瓣（子曰 2026-08-18） */}
@@ -138,6 +153,16 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
             )
           })}
         </div>
+
+        {/* 约定的上下文内自我提示（v3.6）：
+            🔴 它**只在用户自己选到这片花瓣时**出现 —— 系统没有拉他，是他自己走进来的。
+            这是「约定」与「定时提醒」的全部差别，也是它能在零催办红线下存活的原因。
+            不判定做了没做，不出现完成率。 */}
+        {currentDim?.pactTiming && currentDim?.pactText && (
+          <p className="qa-pact" data-testid="qa-pact">
+            你和这片的约定：每个{currentDim.pactTiming}，{currentDim.pactAnchor}之后，我去{currentDim.pactText}。
+          </p>
+        )}
 
         {/* 二度分支（可选，默认收起）——不点就直接跳到描述输入 */}
         {dimBranches.length > 0 && (

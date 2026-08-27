@@ -142,6 +142,64 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 5,
+    name: 'v3.5「我的花园」：dimensions 补 targetScore（目标）+ weeklyIntent（计划节奏）',
+    up(db) {
+      const dcols = db.prepare('PRAGMA table_info(dimensions)').all().map(c => c.name)
+      // 目标分：用户自己定这片花瓣想开到什么程度。NULL = 没定过，界面上就不画目标线。
+      // 刻意可为空 —— 「八片都得有目标」正是我们要反驳的那套叙事。
+      if (!dcols.includes('targetScore')) {
+        db.exec('ALTER TABLE dimensions ADD COLUMN targetScore REAL')
+      }
+      // 计划节奏：希望每周照顾几次。0 = 不为这片立计划（默认，存量库零回填）。
+      // 🔴 它只用来给「今天」页的轻推排序，绝不产生红点/未读数/催办文案 ——
+      // 去惩罚化是这产品的准入条件，计划是给自己看的意图，不是待办债务。
+      if (!dcols.includes('weeklyIntent')) {
+        db.exec('ALTER TABLE dimensions ADD COLUMN weeklyIntent INTEGER NOT NULL DEFAULT 0')
+      }
+    },
+  },
+  {
+    version: 6,
+    name: 'v3.6「约定」：dimensions 补 pactTiming / pactAnchor / pactText（执行意图三件套）',
+    up(db) {
+      // 「约定」不是计划，也不是提醒（第五轮圆桌 小艾）：
+      //   执行意图（implementation intention）是少数被 meta 分析反复验证有效的干预（d≈0.65），
+      //   它生效的机制不是提升动力，而是把行为的控制权交给**环境线索**。
+      //   ⇒ 所以它天然不需要提醒 —— 提醒是它的替代品，不是补充。这正是它能在零催办红线下存活的原因。
+      //
+      // 句式：每个「时机」，「锚点」之后，我给「这片花瓣」做「一件具体的事」。
+      //   时机 = 枚举（每天/工作日/周末/周一..周日），锚点 = 用户自己已有的日常行为（吃完晚饭/关掉电脑）。
+      //
+      // 🔴 三个字段，没有第四个 —— **没有完成态、没有进度、没有计数**。
+      //   一旦有 boolean，UI 就能显示「未完成」，约定就变成任务，任务就有失败，失败就是惩罚。
+      //   这是唯一可靠的守法方式，靠文案自律守不住（Lisa 二轮：不做到期判定）。
+      const dcols = db.prepare('PRAGMA table_info(dimensions)').all().map(c => c.name)
+      if (!dcols.includes('pactTiming')) {
+        db.exec("ALTER TABLE dimensions ADD COLUMN pactTiming TEXT NOT NULL DEFAULT ''")
+      }
+      if (!dcols.includes('pactAnchor')) {
+        db.exec("ALTER TABLE dimensions ADD COLUMN pactAnchor TEXT NOT NULL DEFAULT ''")
+      }
+      if (!dcols.includes('pactText')) {
+        db.exec("ALTER TABLE dimensions ADD COLUMN pactText TEXT NOT NULL DEFAULT ''")
+      }
+    },
+  },
+  {
+    version: 7,
+    name: 'v3.6「Aha 闸门」：events 表 UNIQUE(name, at) —— 防程序自身重复写入',
+    up(db) {
+      // 闸门通过后要连写两条事件，上层一旦手抖调两次，索引兜住就不会重复计数。
+      // 存量数据里可能已有 (name, at) 重复行，加索引前先去重，否则建索引会失败。
+      db.exec(`
+        DELETE FROM events
+        WHERE id NOT IN (SELECT MIN(id) FROM events GROUP BY name, at);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_events_name_at ON events(name, at);
+      `)
+    },
+  },
 ]
 
 function runMigrations() {
@@ -343,6 +401,10 @@ function addDimension(row) {
 }
 function updateDimension(id, data) {
   const keys = Object.keys(data); const vals = Object.values(data)
+  // 空对象会拼出 `SET  WHERE id = ?` —— SQLite 报 near "WHERE": syntax error。
+  // 这不是假想情况：IPC 的结构化克隆会**丢掉值为 undefined 的字段**，
+  // 于是 { targetScore: undefined } 过一趟 IPC 就变成了 {}。空更新当 no-op 处理。
+  if (keys.length === 0) return
   db.prepare(`UPDATE dimensions SET ${keys.map(k => k + ' = ?').join(', ')} WHERE id = ?`).run(...vals, id)
 }
 function deleteDimension(id) {
@@ -450,7 +512,24 @@ function addSnapshot(row) {
     .run(row.id, row.weekKey, row.takenAt, row.dataUrl)
 }
 function logEvent(name) {
-  db.prepare('INSERT INTO events (name, at) VALUES (?, ?)').run(String(name), Date.now())
+  // OR IGNORE 是 v7 唯一索引的配套：同名同毫秒重复写入被静默吞掉，而不是抛异常崩调用方
+  db.prepare('INSERT OR IGNORE INTO events (name, at) VALUES (?, ?)').run(String(name), Date.now())
+}
+
+// ---- Aha 闸门用的三个查询 + 一个清理（v3.6）----
+function hasEvent(name) {
+  return !!db.prepare('SELECT 1 FROM events WHERE name = ? LIMIT 1').get(String(name))
+}
+function hasEventSince(name, sinceMs) {
+  return !!db.prepare('SELECT 1 FROM events WHERE name = ? AND at >= ? LIMIT 1').get(String(name), sinceMs)
+}
+function countEventsSince(name, sinceMs) {
+  return db.prepare('SELECT COUNT(*) AS c FROM events WHERE name = ? AND at >= ?').get(String(name), sinceMs).c
+}
+/** 播完待播帧后整组清掉（同一天可能攒了多条），避免堆积 */
+function clearEventsByPrefix(prefix) {
+  db.prepare("DELETE FROM events WHERE name LIKE ? || '%'").run(String(prefix))
+  return true
 }
 
 // ========== 季度校准会谈 + 焦点维度（v3.2） ==========
@@ -510,5 +589,6 @@ module.exports = {
   getActions, getActionsByDimension, addAction, updateAction, deleteAction,
   getReviews, addReview, updateReview, deleteReview,
   getSetting, setSetting, getSnapshots, addSnapshot, logEvent,
+  hasEvent, hasEventSince, countEventsSince, clearEventsByPrefix,
   getQuarterlyReviews, upsertQuarterlyReview, deleteQuarterlyReview, setFocusDimensions,
 }

@@ -301,8 +301,19 @@ export async function createWebBackend(opts: WebBackendOptions): Promise<WebBack
       return ok()
     },
     dbEventsLog: async (name) => {
+      const now = Date.now()
+      // 与 SQLite 侧 v7 的 UNIQUE(name, at) + INSERT OR IGNORE 行为对齐：
+      // 同名同毫秒的重复写入静默吞掉，两边口径必须一致，否则闸门在网页版会失效
+      if (db.events.some(e => e.name === name && e.at === now)) return true
       const id = (db.events.at(-1)?.id ?? 0) + 1
-      db.events.push({ id, name: String(name), at: Date.now() })
+      db.events.push({ id, name: String(name), at: now })
+      return ok()
+    },
+    dbEventsHas: async (name) => db.events.some(e => e.name === name),
+    dbEventsHasSince: async (name, since) => db.events.some(e => e.name === name && e.at >= since),
+    dbEventsCountSince: async (name, since) => db.events.filter(e => e.name === name && e.at >= since).length,
+    dbEventsClearPrefix: async (prefix) => {
+      del(db.events as any[], e => String(e.name).startsWith(prefix))
       return ok()
     },
 

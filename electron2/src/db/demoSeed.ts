@@ -37,6 +37,10 @@ interface DimDef {
   initialScore: number
   targetScore: number
   identity: string
+  /** 演示用：目标分（null = 这片没定目标） */
+  demoTarget?: number | null
+  /** 演示用：计划节奏（希望每周几次；0 = 没立计划） */
+  demoWeekly?: number
   /** 近 30 天的记录日（0 = 今天）。条数 × 质量凑出 budget */
   recentDays: number[]
   /** 31~89 天前的历史记录条数，只影响趋势图与「浇过水的日子」，不进当前分 */
@@ -93,6 +97,7 @@ const DIMS: DimDef[] = [
   },
   {
     key: 'growth', name: '个人成长', icon: 'Brain', colorHex: '#9B7BB8',
+    demoTarget: 8, demoWeekly: 4,
     initialScore: 4, targetScore: 8.0,
     identity: '一直在学新东西的人',
     recentDays: [0, 1, 2, 4, 5, 7, 10, 14, 19, 25], historyCount: 9,
@@ -115,6 +120,7 @@ const DIMS: DimDef[] = [
   },
   {
     key: 'health', name: '身心健康', icon: 'Heart', colorHex: '#D89A9E',
+    demoTarget: 7, demoWeekly: 3,
     initialScore: 3, targetScore: 6.6,
     identity: '能跑十公里的人',
     recentDays: [0, 1, 2, 3, 5, 6, 8, 11, 15, 20, 26], historyCount: 12,
@@ -137,6 +143,7 @@ const DIMS: DimDef[] = [
   },
   {
     key: 'family', name: '家庭关系', icon: 'Home', colorHex: '#E0B77E',
+    demoTarget: 6, demoWeekly: 2,
     initialScore: 4, targetScore: 6.0,
     identity: '',
     recentDays: [1, 4, 9, 13, 18, 23], historyCount: 7,
@@ -288,6 +295,10 @@ export function buildDemoSnapshot(now: number): WebSnapshot {
       scoringMode: 'auto',
       identity: def.identity,
       focusSince: null, // 焦点在下面按季度会谈统一落
+      // v3.5：目标分与计划节奏。演示花园刻意只给三片立了计划 ——
+      // 「八片都有计划」正是这产品要反驳的那套叙事，样板数据不能自己先违反它。
+      targetScore: def.demoTarget ?? null,
+      weeklyIntent: def.demoWeekly ?? 0,
     })
 
     // ---- 评分标准（复用 models/dimension.ts 的权威定义） ----

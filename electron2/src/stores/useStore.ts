@@ -15,6 +15,10 @@ import { loadAmbience, saveAmbience, applyCursorSetting, type Ambience } from '.
 import { calculateScore, overallScore, coveredDimensions, startOfToday } from '../engine/scoring'
 import { composeEcho, composeCompleteEcho, type Echo } from '../engine/echo'
 import { composeLightShift, LIGHT_LAW_SEEN_KEY, type LightShift } from '../engine/lightShift'
+import {
+  checkAhaGate, hasSampleFloor, isBackfill, isNight, isRoughDay,
+  EV_PLAYED, EV_KIND_PREFIX, type AhaKind,
+} from '../engine/ahaGate'
 import { loadAIConfig, saveAIConfig, testConnection } from '../services/ai'
 import { loadTheme, type ThemeId } from '../services/theme'
 import { DEFAULT_RUBRICS } from '../models/dimension'
@@ -37,6 +41,61 @@ function seasonStartOf(reviews: QuarterlyReview[], dimensions: Dimension[]): num
   const done = reviews.filter(r => r.completedAt != null)
   if (done.length === 0) return gardenBirth(dimensions)
   return Math.max(...done.map(r => r.completedAt as number))
+}
+
+/** 待播定格帧的载荷落在 settings（key-value 能存 JSON）；闸门与幂等走 events 表 */
+const AHA_PENDING_KEY = 'ahaPending'
+
+/** 闸门要的两个查询。走 window.electronAPI，桌面与网页两版都已实现 */
+function ahaDeps() {
+  return {
+    hasSince: (name: string, since: number) =>
+      window.electronAPI.dbEventsHasSince(name, since).catch(() => false),
+    countSince: (name: string, since: number) =>
+      window.electronAPI.dbEventsCountSince(name, since).catch(() => 0),
+  }
+}
+
+/**
+ * 进门时消费待播的定格帧。
+ *
+ * Lisa 三轮给的唯一抑制规则（她的原话：他上次没记却被一句账本迎接，
+ * 这句就是没被邀请的评判）：
+ *   · 只在上一次会话里他**确实记了东西**之后出现 —— 载荷本身就是记录产生的，天然满足
+ *   · 当日首开只一次 —— 靠 aha_played 的日上限兜住
+ *   · 22:00–05:00 不出现
+ *   · 中断回归 7 天内不出现
+ *   · 不阻断操作、不需点掉、滑走即消、当日不再补
+ */
+async function takePendingAha(actions: Action[]): Promise<{ aha: LightShift | null; ahaStampedAt: number | null }> {
+  const none = { aha: null, ahaStampedAt: null }
+  try {
+    const raw = await getSetting(AHA_PENDING_KEY)
+    if (!raw) return none
+    const payload = JSON.parse(raw) as { kind: AhaKind; shift: LightShift; at: number }
+    const now = Date.now()
+
+    // 进门这一刻若是深夜，同样收声（小艾三轮：深夜闸门的判定时刻要跟着挪到进门时刻）
+    if (isNight(now)) return none
+
+    // 中断回归 7 天内不播 —— 一个刚回来的人开门不该撞上一句账本
+    const lastAt = actions.length ? Math.max(...actions.map(a => a.createdAt)) : 0
+    const brokeDays = lastAt ? Math.floor((payload.at - lastAt) / 86400000) : 0
+    if (brokeDays >= 5) {
+      await setSetting(AHA_PENDING_KEY, '')
+      return none
+    }
+
+    const gate = await checkAhaGate(payload.kind, ahaDeps(), { now })
+    if (!gate.pass) return none
+
+    await setSetting(AHA_PENDING_KEY, '')
+    await logEvent(EV_PLAYED)
+    await logEvent(`${EV_KIND_PREFIX}${payload.kind}`)
+    return { aha: payload.shift, ahaStampedAt: payload.at }
+  } catch {
+    return none
+  }
 }
 
 // 同 src/db/database.ts：localStorage.setItem('lifeos:debug','1') 打开
@@ -70,6 +129,17 @@ interface AppState {
   ahaLawSeen: boolean
   /** 点花瓣弹出的维度面板（v3.5 M7）；null = 没开。花瓣即导航，取代了「维度管理」那一栏 */
   dimensionSheetId: string | null
+  /** 定格帧的触发时刻（进门播时用来给日期锚，小艾三轮的必要条件） */
+  ahaStampedAt: number | null
+  /**
+   * 回执层（v3.6）：刚拿到光的那片花瓣 id。
+   * 光带里这一段做一次 240ms 的饱和度脉冲 + 一粒墨点落下，然后停在 1.06 直到下一次记录 ——
+   * 🔴 通道必须是**饱和度**不是宽度：一条 impact=2 的记录在 294px 带子上只让某段变宽 3–9px、
+   *    其余各收缩 0.4–1.3px，240ms 内 1px 的宽度变化人眼没有知觉（小露二轮实算）。
+   */
+  pulseDimId: string | null
+  /** 回归卡已收起的那次中断（值 = 上次记录时刻）；0 = 没收过 */
+  returnCardDismissedAt: number
 
   ambience: Ambience
   onboardingOpen: boolean
@@ -92,6 +162,8 @@ interface AppState {
   setSelectedDate: (date: number) => void
   setTheme: (theme: ThemeId) => void
   clearEcho: () => void
+  clearAha: () => void
+  dismissReturnCard: (lastAt: number) => Promise<void>
   markAhaLawSeen: () => Promise<void>
   openDimensionSheet: (id: string) => void
   closeDimensionSheet: () => void
@@ -160,6 +232,9 @@ export const useStore = create<AppState>((set, get) => ({
   aha: null,
   ahaLawSeen: false,
   dimensionSheetId: null,
+  ahaStampedAt: null,
+  pulseDimId: null,
+  returnCardDismissedAt: 0,
   ambience: loadAmbience(),
   onboardingOpen: false,
   quarterlyReviews: [],
@@ -181,7 +256,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Step 2: 并行加载所有数据
       LOG('loadData', 'Step 2: 并行加载数据...')
-      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen] = await Promise.all([
+      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen, returnSeen] = await Promise.all([
         getDimensions(),
         getScoreRubrics(),
         getBranches(),
@@ -192,6 +267,7 @@ export const useStore = create<AppState>((set, get) => ({
         getSetting('quarterlyDeferUntil'),
         getSetting('quarterlyDeferCount'),
         getSetting(LIGHT_LAW_SEEN_KEY),
+        getSetting('returnCardSeenAt'),
       ])
       LOG('loadData', `Step 2: 完成 - dims=${dimensions.length}, rubrics=${scoreRubrics.length}, branches=${branches.length}, goals=${goals.length}, actions=${actions.length}, reviews=${reviews.length}`)
 
@@ -217,6 +293,10 @@ export const useStore = create<AppState>((set, get) => ({
         quarterlyReviews,
         quarterlyDefer: { until: Number(deferUntil) || 0, count: Number(deferCount) || 0 },
         ahaLawSeen: lawSeen === '1',
+        returnCardDismissedAt: Number(returnSeen) || 0,
+        // 待播的定格帧必须在**首帧渲染前**就算完并放进同一批 set ——
+        // 进门后再算会闪一下才播，那比不播更糟（小露三轮的护栏）
+        ...(await takePendingAha(actions)),
         isLoading: false,
         loadError: null,
       })
@@ -238,7 +318,13 @@ export const useStore = create<AppState>((set, get) => ({
   openQuickAddWith: (dimensionId) => set({ quickAddOpen: true, quickAddPreset: dimensionId }),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setTheme: (theme) => set({ theme }),
-  clearEcho: () => set({ echo: null, aha: null }),
+  clearEcho: () => set({ echo: null }),
+  clearAha: () => set({ aha: null, ahaStampedAt: null }),
+
+  dismissReturnCard: async (lastAt) => {
+    set({ returnCardDismissedAt: lastAt })
+    try { await setSetting('returnCardSeenAt', String(lastAt)) } catch { /* 记不住就下次再出一次，无害 */ }
+  },
 
   openDimensionSheet: (id) => set({ dimensionSheetId: id }),
   closeDimensionSheet: () => set({ dimensionSheetId: null }),
@@ -423,12 +509,33 @@ export const useStore = create<AppState>((set, get) => ({
         })
       : null
 
-    // 「光的分配」（v3.5 M5）：同样必须用写入前的 actions 算 —— 它要的正是「之前 vs 之后」的差
-    const aha = composeLightShift({ dimensions, actionsBefore: actions, added: newAction })
+    // 「光的分配」（v3.6）：仍然必须用写入前的 actions 算 —— 它要的正是「之前 vs 之后」的差。
+    // 但**提交后不再弹层**：命中就攒起来，等下次打开 app 作为「进门的一眼」播。
+    // 提交后什么都不会来 ⇒ 「追求触发」被彻底掐死（小露二轮那一刀）。
+    const shift = composeLightShift({ dimensions, actionsBefore: actions, added: newAction })
 
     await addAction(newAction)
     await get().loadData()
-    if (echo || aha) set({ echo, aha })
+
+    // 回执层：这一段做一次饱和度脉冲。每次记录都有，不阻断、无文字
+    if (echo) set({ echo, pulseDimId: action.dimensionId })
+    else set({ pulseDimId: action.dimensionId })
+
+    // 静音档（Lisa 二轮定为唯一「只减不加」的时段）：
+    // 深夜 22:00–05:00 与坏日子（当日有 tired/vexed 心情）一律不攒定格帧，
+    // 且**不落任何事件行 ⇒ 不消耗冷却**（小艾三轮要求这条必须在代码里写死一套）。
+    const nowTs = newAction.createdAt
+    if (isNight(nowTs) || isRoughDay(get().actions, nowTs)) return
+
+    if (!shift) return
+    const backfill = isBackfill(newAction)
+    const floorOk = hasSampleFloor(dimensions, get().actions, nowTs)
+    const gate = await checkAhaGate('light_shift', ahaDeps(), { backfill, floorOk, now: nowTs })
+    if (!gate.pass) return
+
+    try {
+      await setSetting(AHA_PENDING_KEY, JSON.stringify({ kind: 'light_shift', shift, at: nowTs }))
+    } catch { /* 攒不下就当没这回事，不挡记录路径 */ }
   },
 
   updateAction: async (id, data) => {

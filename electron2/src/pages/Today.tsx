@@ -1,36 +1,41 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useStore, useTodayActions } from '../stores/useStore'
+import { useStore, useTodayActions, useEnabledDimensions } from '../stores/useStore'
 import { DailyGlance } from '../components/DailyGlance'
 import { GardenTasks } from '../components/GardenTasks'
 import { ActionRow } from '../components/ActionRow'
+import { ReturnCard } from '../components/ReturnCard'
 import { startOfToday } from '../engine/scoring'
+import { isEarly, isNight } from '../engine/ahaGate'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-/** 「更早」往回看多少天。再往前请走「全部记录」——这一屏是今天，不是档案馆 */
-const EARLIER_DAYS = 14
+/** 「最近的记录」往回看多少天。再往前请走「全部记录」——这一屏是今天，不是档案馆 */
+const RECENT_DAYS = 14
 
 /**
- * 「今天」—— 三入口之二（v3.5 M3）。
+ * 「今天」—— 三入口之一，默认落地页（v3.6，按子曰 2026-08-27 口径）。
  *
- * 它把原来的「每日看板」和「行动记录」两栏合成一屏：
- *   推给你的（今日一瞥 / 花园轻推） + 你记下的（今天 / 更早）。
+ * 三块，顺序就是子曰给的顺序：
+ *   ① 推荐我做的 —— 今日一瞥（一天一条、零按钮）+ 花园轻推（可整片无视）
+ *   ② 我今天做的
+ *   ③ 最近的记录（按日分组，回看 14 天）
  *
- * 红线不变（v3.3 T3）：一瞥一天只出一条、零按钮、零催办；轻推可以整片无视。
- * 空态写「花在等你，不在催你」—— 不写「快去记录」。
+ * 屏顶那句问候按时段变（小露一轮的时间上下文，去掉了任何作息评价）：
+ *   清晨说「今天的光还没分出去」是开阔；同一句话放到深夜说就是指责 ——
+ *   **分寸就是这个东西：句子对不对，取决于几点。**
  */
 export function Today() {
   const actions = useStore(s => s.actions)
   const todayActions = useTodayActions()
+  const dimensions = useEnabledDimensions()
   const setQuickAddOpen = useStore(s => s.setQuickAddOpen)
 
   const today = startOfToday()
-  const earlier = useMemo(() => {
-    const from = today - EARLIER_DAYS * DAY_MS
+  const recent = useMemo(() => {
+    const from = today - RECENT_DAYS * DAY_MS
     const rows = actions
       .filter(a => a.date < today && a.date >= from)
       .sort((a, b) => b.date - a.date)
-    // 按天分组：一屏里同一天的记录挨在一起，比一条长列表好读
     const groups: { date: number; rows: typeof rows }[] = []
     for (const a of rows) {
       const g = groups.find(x => x.date === a.date)
@@ -47,33 +52,54 @@ export function Today() {
     return new Date(ts).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   }
 
+  // 有约定的花瓣：这一屏是它唯一合法的露面处之一（另一处是记录面板里选中它时）
+  const pacts = dimensions.filter(d => d.pactTiming && d.pactText)
+
+  const now = Date.now()
+  const greeting = isNight(now)
+    ? '夜深了。这里什么都不着急。'
+    : isEarly(now)
+      ? '今天的光还没分出去。'
+      : '今天的账，还在记。'
+
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="page-pad max-w-3xl mx-auto space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-light tracking-wide">今天</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-1">
-              {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-            </p>
-          </div>
-          <button className="btn btn-primary desktop-only" onClick={() => setQuickAddOpen(true)}>
-            + 快速记录
-          </button>
+      <div className="page-pad space-y-4">
+        <div>
+          <h1 className="text-2xl font-light tracking-wide">今天</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-1" data-testid="today-greeting">{greeting}</p>
         </div>
 
-        {/* 推给你的 */}
+        {/* 断记 5 天以上回来时才出现。它不催你记，只告诉你账本没变 */}
+        <ReturnCard />
+
+        {/* ① 推荐我做的 */}
         <DailyGlance />
         <GardenTasks />
 
-        {/* 你记下的 · 今天 */}
-        <div className="card">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
-            今天记了什么 · {todayActions.filter(a => a.isCompleted).length}/{todayActions.length}
-          </h2>
+        {/* 有约定的话，在这里安静地列一行。零按钮、不判定做了没做 */}
+        {pacts.length > 0 && (
+          <div className="card space-y-2" data-testid="pact-list">
+            <h2 className="text-sm font-medium text-[var(--text-secondary)]">你和花瓣的约定</h2>
+            {pacts.map(d => (
+              <p key={d.id} className="text-xs text-[var(--text-secondary)] leading-relaxed flex gap-2">
+                <span className="dot-sm mt-1.5" style={{ backgroundColor: d.colorHex }} />
+                <span>每个{d.pactTiming}，{d.pactAnchor}之后，我去{d.pactText}。</span>
+              </p>
+            ))}
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              这是你写给自己的话，不是一件待办。没做到的那天，这里也不会有任何变化。
+            </p>
+          </div>
+        )}
 
+        {/* ② 我今天做的 */}
+        <div className="card">
+          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
+            我今天做的 · {todayActions.filter(a => a.isCompleted).length}/{todayActions.length}
+          </h2>
           {todayActions.length === 0 ? (
-            <div className="text-center py-8 text-[var(--text-muted)] text-sm" data-testid="today-empty">
+            <div className="text-center py-7 text-[var(--text-muted)] text-sm" data-testid="today-empty">
               <p className="mb-2">今天还没记 —— 不要紧，花在等你，不在催你</p>
               <button className="btn btn-ghost text-sm" onClick={() => setQuickAddOpen(true)}>
                 + 记下第一件小事
@@ -86,11 +112,11 @@ export function Today() {
           )}
         </div>
 
-        {/* 你记下的 · 更早 */}
-        {earlier.length > 0 && (
-          <div className="card space-y-4" data-testid="earlier-actions">
-            <h2 className="text-sm font-medium text-[var(--text-secondary)]">更早</h2>
-            {earlier.map(g => (
+        {/* ③ 最近的记录 */}
+        {recent.length > 0 && (
+          <div className="card space-y-3" data-testid="recent-actions">
+            <h2 className="text-sm font-medium text-[var(--text-secondary)]">最近的记录</h2>
+            {recent.map(g => (
               <div key={g.date}>
                 <p className="text-[11px] text-[var(--text-muted)] tracking-wide mb-1">{dayLabel(g.date)}</p>
                 <div className="space-y-0">

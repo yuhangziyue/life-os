@@ -5,6 +5,7 @@ import { downloadJSON, downloadCSV, pickAndImportJSON } from '../db/fileTransfer
 import { THEMES } from '../services/theme'
 import { POSITIONING, APP_VERSION, ABOUT_PROMISES, ABOUT_PROMISES_WEB, ABOUT_DISCLAIMER } from '../content/about'
 import { isWebBuild, webStorageStatus, storagePromiseLines } from '../services/storage'
+import { PetalIntentEditor } from '../components/PetalIntentEditor'
 import { gardenBirth } from '../engine/quarterly'
 
 /** AI 配置入口开关：AI 能力达标（50 条 eval + ≥90% 准确率 + 建议式交互）前不对用户露出 */
@@ -114,6 +115,9 @@ export function Settings() {
             </div>
           )}
         </div>
+
+        {/* 八片花瓣的现在 · 想要开到哪 · 约定（v3.6，子曰命题的第三个 tab 核心） */}
+        <PetalIntentEditor />
 
         {/* 花语：从导航栏降为一个条目 */}
         <Link to="/handbook" className="drawer-link" data-testid="link-handbook">

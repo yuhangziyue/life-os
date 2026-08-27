@@ -49,6 +49,17 @@ export async function updateDimension(id: string, data: any) {
   if (data.initialScore !== undefined) dbData.initialScore = data.initialScore
   if (data.scoringMode !== undefined) dbData.scoringMode = data.scoringMode
   if (data.identity !== undefined) dbData.identity = data.identity
+  // v3.5 / v3.6 新增列。🔴 这张白名单是个**沉默的陷阱**：忘了加字段不会报错，
+  // 只是那个字段永远存不进去；而全部字段都被过滤掉时还会拼出空 SET 语句
+  // （`UPDATE dimensions SET  WHERE id = ?`），主进程报 near "WHERE": syntax error。
+  // 加新列 = 必须同时改这里，否则 UI 上改了、库里没变，查半天。
+  if (data.targetScore !== undefined) dbData.targetScore = data.targetScore
+  if (data.weeklyIntent !== undefined) dbData.weeklyIntent = data.weeklyIntent
+  if (data.pactTiming !== undefined) dbData.pactTiming = data.pactTiming
+  if (data.pactAnchor !== undefined) dbData.pactAnchor = data.pactAnchor
+  if (data.pactText !== undefined) dbData.pactText = data.pactText
+  // 空更新直接返回：既省一次 IPC，也不给主进程送一条会炸的 SQL
+  if (Object.keys(dbData).length === 0) return true
   return api().dbDimensionsUpdate(id, dbData)
 }
 
@@ -270,7 +281,18 @@ export async function setFocusDimensions(ids: string[]) {
 // ========== 类型转换（DB 行 → 模型对象） ==========
 
 function toDimension(row: any) {
-  return { ...row, isEnabled: !!row.isEnabled, identity: row.identity ?? '', focusSince: row.focusSince ?? null }
+  return {
+    ...row,
+    isEnabled: !!row.isEnabled,
+    identity: row.identity ?? '',
+    focusSince: row.focusSince ?? null,
+    // 存量库（迁移前建的行）这几列是 NULL，给模型层补默认值，UI 才不必到处判空
+    targetScore: row.targetScore ?? null,
+    weeklyIntent: row.weeklyIntent ?? 0,
+    pactTiming: row.pactTiming ?? '',
+    pactAnchor: row.pactAnchor ?? '',
+    pactText: row.pactText ?? '',
+  }
 }
 function toScoreRubric(row: any) { return row }
 function toBranch(row: any) { return row }

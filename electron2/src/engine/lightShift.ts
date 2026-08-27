@@ -43,7 +43,15 @@ export interface LightShift {
   /** 花瓣补间用：维度 id → 分数。before/after 只有 gained 那片不同 */
   scoresBefore: Record<string, number>
   scoresAfter: Record<string, number>
-  /** 这是不是这个花园的第一笔光（首条记录没有「从别人那里挪」这回事） */
+  /**
+   * 这是不是这座花园的**第一笔光**。
+   *
+   * 🔴 v3.5 的判据是 `before.size === 0`，那判的是「近 7 天窗口内没有光」——
+   *   于是**用户断记 7 天后回来的第一条，会被告知「这是这座花园的第一笔光」**。
+   *   Lisa 把它定级为 P0：产品说的实际内容是「我不记得你」，
+   *   而这个产品对他的全部承诺就是"我在替你攒证据、陪伴天数永不清零"，
+   *   这一句正面推翻了那个承诺，伤害等级高于任何一句用词不当。
+   */
   firstEver: boolean
 }
 
@@ -112,7 +120,8 @@ export function composeLightShift(params: {
     yielded,
     scoresBefore,
     scoresAfter,
-    firstEver: before.size === 0,
+    // 判据必须是全库、且看写入前的那一份
+    firstEver: actionsBefore.filter(a => a.isCompleted).length === 0,
   }
 }
 
@@ -120,17 +129,61 @@ export function composeLightShift(params: {
 export const pct = (share: number) => Math.round(share * 100)
 
 /**
- * 定格那句话。两行都是事实：
- *   第一行是占比变化（由组件按段渲染），第二行是**归属**，不是评价。
- * 「你分给了 X」——分配是一个中性动作，它既不是成就也不是辜负。
+ * 定格那一句（v3.6 第五轮圆桌定稿，三轮才收敛）。
+ *
+ * 演进过程值得留档，因为它是这套文案纪律的由来：
+ *   v3.5：「今天的光，你分给了休闲娱乐。」
+ *     → 晓雅判定为**安全句子**并推翻：只写了收方，代价缺席，
+ *       而「代价可见」是这个产品全部的立论。
+ *   一轮：「今天这点光，你从职业发展那边挪给了休闲娱乐。」
+ *     → Lisa 反对：「挪」+ 人称主语 +「给」+ 同屏下降箭头，四者叠加 = 挪用，
+ *       产品在无意中做了**记账式的道德归因**（我玩了一会儿，事业掉了 1 个点）。
+ *   二轮：小露改用「让开」，Lisa 批准「让」句式。
+ *   三轮：晓雅**驳回「让开」并自我撤回一轮的「让出来的」**——
+ *       「让 = 美德，一旦让是好事，没让的就成了不好」，道德还在，只是换了方向。
+ *       Lisa 接受并撤回自己批准过的「让」句式：
+ *       「我 R2 想护的是付方尊严，但代价是给八片排了德性次序，这个代价更大。」
+ *
+ * ⇒ 最终动词是**「分」**：中性、公平、零偷意。
+ * ⇒ 受损方**默认不具名**（用「别处」）：因果归因需要两个具名端点才能闭环，
+ *    只有一端具名时，剩下的只是一句守恒陈述 —— 代价还在，罪名没了（晓雅红线 v2）。
+ * ⇒ **唯一例外**：付方正是本季焦点那片时具名 ——
+ *    焦点是用户自己写下的宣称，指名它是**引用他**，不是指控他。
  */
-export function shiftFact(shift: LightShift): string {
-  return `今天的光，你分给了${shift.gained.name}。`
+export function shiftFact(shift: LightShift, focusYieldName?: string | null): string {
+  if (focusYieldName) {
+    return `今天的光落在${shift.gained.name}。${focusYieldName}这次分得少。`
+  }
+  return `今天的光偏向了${shift.gained.name}，别处就分得少。`
 }
 
-/** 首次达成时才说的那一句。说一次就够，说第二次是说教 */
+/**
+ * 首次达成时才说的那一句。说一次就够，说第二次是说教。
+ * 末句「这条带子本来就是这样」是晓雅改的指代：
+ * 把守恒从「你的行为后果」彻底还给世界 —— 没有这句，守恒就是他造成的。
+ */
 export const LIGHT_LAW =
-  '这条色带的总和永远是 100%。你给谁多一点，就是从别人那里挪。'
+  '一天的光只有一份。给了谁多一点，就是别处少一点 —— 这条带子本来就是这样。'
+
+/**
+ * 占比变化的三种边界（老架给判据，晓雅给边界句）。
+ *   unchanged：值压根没动 ⇒ 不该演
+ *   sub_pct  ：动了，但四舍五入后同值 ⇒「这一下太轻，带子还没动。」
+ *   moved    ：跨过了整数边界
+ * 🔴 unchanged 与 sub_pct 必须分开，语义不同不能合并（老架三轮强调）。
+ * 判据只能用 Math.round —— floor 会让 12.9 显示成 12，用户读到「从 12 到 12」以为没动，其实动了。
+ */
+export function shareDelta(from: number, to: number): {
+  fromPct: number; toPct: number; kind: 'unchanged' | 'sub_pct' | 'moved'
+} {
+  const fromPct = Math.round(from * 100)
+  const toPct = Math.round(to * 100)
+  if (fromPct !== toPct) return { fromPct, toPct, kind: 'moved' }
+  return { fromPct, toPct, kind: to > from ? 'sub_pct' : 'unchanged' }
+}
+
+/** 这一下太轻的那句。它是全产品最便宜的一次教学：让人第一次知道一条随手记的重量 */
+export const TOO_LIGHT = '这一下太轻，带子还没动。'
 
 /** 记住「已经说过了」的 settings key */
 export const LIGHT_LAW_SEEN_KEY = 'ahaLightExplained'

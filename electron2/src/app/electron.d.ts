@@ -46,6 +46,12 @@ export interface ElectronAPI {
   dbSnapshotsGetAll: () => Promise<any[]>
   dbSnapshotsAdd: (row: any) => Promise<boolean>
   dbEventsLog: (name: string) => Promise<boolean>
+  /** Aha 闸门用（v3.6）：某个事件名有没有出现过 / 某时刻之后有没有 / 某时刻之后出现几次 */
+  dbEventsHas: (name: string) => Promise<boolean>
+  dbEventsHasSince: (name: string, sinceMs: number) => Promise<boolean>
+  dbEventsCountSince: (name: string, sinceMs: number) => Promise<number>
+  /** 播完待播帧后清掉整组（name LIKE 'prefix%'），避免堆积 */
+  dbEventsClearPrefix: (prefix: string) => Promise<boolean>
 
   appDbPath: () => Promise<string>
 

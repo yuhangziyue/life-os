@@ -4,11 +4,11 @@ import { useStore } from './stores/useStore'
 import { applyTheme } from './services/theme'
 import { applyCursorSetting } from './services/ambience'
 import { getSetting } from './db'
-import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
 import { QuickAddPanel } from './components/QuickAddPanel'
 import { MenuBridge } from './components/MenuBridge'
 import { EchoToast } from './components/EchoToast'
+import { LightShiftAha } from './components/LightShiftAha'
 import { PetalBackdrop } from './components/PetalBackdrop'
 import { PetalTrail } from './components/PetalTrail'
 import { Onboarding } from './components/Onboarding'
@@ -45,6 +45,15 @@ const TitleBar = () => (
     } as React.CSSProperties}
   />
 )
+
+/** 进门的一眼。载荷在 loadData 里就已经取好，所以这里渲染即播，不会闪 */
+function EntryAha() {
+  const aha = useStore(s => s.aha)
+  const stampedAt = useStore(s => s.ahaStampedAt)
+  const clearAha = useStore(s => s.clearAha)
+  if (!aha) return null
+  return <LightShiftAha shift={aha} stampedAt={stampedAt ?? undefined} onClose={clearAha} />
+}
 
 export default function App() {
   const [phase, setPhase] = useState<AppPhase>('loading')
@@ -142,7 +151,6 @@ export default function App() {
     <HashRouter>
       <MenuBridge />
       <div className="h-screen flex">
-        <Sidebar />
         <main className="flex-1 flex flex-col min-w-0">
           {/* 主面板自己的拖拽带：吃主面板底色，与侧栏那条各自同色，顶部不再有缝。
               用 <header> 而不是 <div>——`main > div` 挂着 pageIn 入场动画，别让拖拽带跟着抖。 */}
@@ -154,12 +162,12 @@ export default function App() {
           <Routes>
             {/* 三入口（v3.5）：花 / 今天 / 我。
                 其余路由全部保留，只是从导航层降到场景内部：
-                  花 → 细看数据(/stats) · 周对账(/review) · 点花瓣(/dimensions/:id)
-                  今天 → 全部记录(/actions)
+                  今天(默认) → 全部记录(/actions)
+                  我的花园 → 细看数据(/stats) · 周对账(/review) · 点花瓣(/dimensions/:id)
                   我 → 花语(/handbook)
                 /settings 与 /me 是同一页 —— 菜单桥与既有 e2e 都还指着 /settings。 */}
-            <Route path="/" element={<Garden />} />
-            <Route path="/today" element={<Today />} />
+            <Route path="/" element={<Today />} />
+            <Route path="/garden" element={<Garden />} />
             <Route path="/me" element={<Settings />} />
             <Route path="/dimensions" element={<Dimensions />} />
             <Route path="/dimensions/:id" element={<DimensionDetail />} />
@@ -170,10 +178,12 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
-        {/* 窄屏才出底栏 + FAB（CSS 控制显隐，不做 JS 断点判断，避免首帧闪烁） */}
+        {/* 底栏三入口 + 记一笔 FAB：全宽度生效（v3.5.1 起手机端是唯一形态） */}
         <TabBar />
         <QuickAddPanel open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
         <EchoToast />
+        {/* 「光的分配」定格帧：不在提交后播，在这里 —— 进门的一眼（v3.6） */}
+        <EntryAha />
         <PetalTrail />
         {onboardingOpen && <Onboarding />}
         {/* 会谈期间整屏接管：仪式需要一个不被待办事项张望的房间 */}

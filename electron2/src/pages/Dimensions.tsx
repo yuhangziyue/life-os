@@ -37,6 +37,13 @@ export function Dimensions() {
         scoringMode: 'auto',
         identity: '',
         focusSince: null,   // 新种的花瓣默认不是焦点；焦点只在季度会谈里选
+        // v3.5/v3.6：新种的花瓣不预设目标、不预设约定 ——
+        // 「八片都该有目标」正是这产品要反驳的那套叙事
+        targetScore: null,
+        weeklyIntent: 0,
+        pactTiming: '',
+        pactAnchor: '',
+        pactText: '',
       })
       setNewName('')
       setNewColor(PLANT_PALETTE[0].hex)
