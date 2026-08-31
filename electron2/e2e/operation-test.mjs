@@ -1356,19 +1356,19 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
   // —— 7. 非焦点维度视觉零降级（红线，设计稿 §3.4）——
   // 同一组分数下，只切换「有没有焦点」，主图层必须逐像素一致：
   // 焦点是加法照明（多画一层金边），不是减法审判（把别人压暗）。
-  await goto('#/')
-  await sleep(600)
+  await goto('#/garden')
+  await sleep(700)
   const withFocus = await p.eval(`return document.querySelector('.flower-breathe canvas').toDataURL()`)
   await p.eval(`await window.electronAPI.dbFocusSet([]); return 1`)
   await reload()
-  await goto('#/')
-  await sleep(600)
+  await goto('#/garden')
+  await sleep(700)
   const withoutFocus = await p.eval(`return document.querySelector('.flower-breathe canvas').toDataURL()`)
   check('非焦点维度视觉零降级（有无焦点，主图层逐像素一致）',
         withFocus.length > 1000 && withFocus === withoutFocus,
         `len=${withFocus.length} 一致=${withFocus === withoutFocus}`)
 
-  // —— 8. 邀请卡：满 84 天才出现，推迟后当周不再现 ——
+  // —— 8. 邀请卡：满 84 天才出现，推迟后当周不再现（v3.6：结算区在「我的花园」）——
   await p.eval(`
     const rows = await window.electronAPI.dbQuarterlyGetAll()
     const r = rows.find(x => x.completedAt)
@@ -1377,7 +1377,7 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
     return r.id
   `)
   await reload()
-  await goto('#/')
+  await goto('#/garden')        // v3.6：邀请卡在「我的花园」的结算区
   await sleep(600)
   const invited = await p.eval(`return {
     card: !!document.querySelector('[data-testid="quarterly-invite"]'),
@@ -1415,8 +1415,8 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
     return { has: !!d, act: d?.actProgress ?? -1 }
   `)
   await reload()
-  await goto('#/')
-  await sleep(600)
+  await goto('#/garden')          // v3.6：续谈卡在「我的花园」的结算区
+  await sleep(700)
   const resumeCard = await p.eval(`return {
     card: !!document.querySelector('[data-testid="quarterly-resume-card"]'),
     text: document.querySelector('[data-testid="quarterly-resume-card"]')?.innerText || '',
@@ -1483,13 +1483,19 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
           `近7天记录=${bandEmpty.recent} 段数=${bandEmpty.segs}`)
   }
 
-  // —— T2 Echo 账本行：走「+ 快速记录」真实路径（同阶段 3 的已验证写法）——
+  // —— T2 Echo 账本行：走记一笔 FAB 的真实路径 ——
   // 「社交关系」在前面各阶段没被写过，这里连记两条：第 2 条必然满足「本季第 2 次」
   const ledgerTexts = []
   for (let i = 0; i < 2; i++) {
     await p.eval(`document.querySelector('[data-testid="mobile-fab"]').click(); return 1`)
     await sleep(600)
-    await p.eval(`${HELPERS}; window.__t.byText('button', '社交关系').click(); return 1`)
+    // 🔴 必须**限定在记录面板内**取花瓣格：这一屏（我的花园）上还有一列花瓣行，
+    //    裸 byText('button','社交关系') 会先命中那一行，点开的是维度面板，不是选中花瓣
+    await p.eval(`
+      const box = document.querySelector('[data-testid="qa-dimensions"]')
+      const b = [...box.querySelectorAll('button')].find(x => x.dataset.dimension === '社交关系')
+      b.click(); return 1
+    `)
     await sleep(400)
     await p.eval(`
       ${HELPERS}
@@ -1553,9 +1559,14 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
         band.segs >= 2 && Math.abs(band.total - 100) <= 1,
         `段数=${band.segs} 合计=${band.total}% 明细=${band.names.map((n, i) => n + band.widths[i] + '%').join('/')}`)
   // 里程碑 impact 5×2=10 vs normal 2 ⇒ 社交关系必须占更宽（权重用 impact 不是条数）
-  check('光带按 impact 加权（里程碑比小事占更多光）',
-        band.names[0] === '社交关系' && band.widths[0] > band.widths[1],
-        `${band.names[0]}=${band.widths[0]}% > ${band.names[1]}=${band.widths[1]}%`)
+  // 🔴 只比**本段自己插的那两片**，不比「占比第一和第二」——
+  //    后者会被库里其它维度的存量数据挤掉名次，那是环境噪声不是回归
+  //    （打包档跑的是真实用户库，一定有存量数据）
+  const social = band.names.indexOf('社交关系')
+  const healthIdx = band.names.indexOf('身心健康')
+  check('光带按 impact 加权（里程碑 5×2 比小事 2 占更多光）',
+        social >= 0 && healthIdx >= 0 && band.widths[social] > band.widths[healthIdx],
+        `社交关系=${band.widths[social]}% > 身心健康=${band.widths[healthIdx]}%`)
 
   // 还原：删掉本段造的全部记录
   await p.eval(`
@@ -1885,11 +1896,11 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
     await new Promise(r => setTimeout(r, 600))
     const anchor = item.querySelector('[data-testid="pact-anchor"]')
     window.__t.type(anchor, '吃完晚饭')
-    anchor.dispatchEvent(new Event('blur', { bubbles: true }))
+    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
     await new Promise(r => setTimeout(r, 700))
     const txt = item.querySelector('[data-testid="pact-text"]')
     window.__t.type(txt, '走二十分钟')
-    txt.dispatchEvent(new Event('blur', { bubbles: true }))
+    txt.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
     await new Promise(r => setTimeout(r, 900))
     const dims = await window.electronAPI.dbDimensionsGetAll()
     const d = dims.find(x => x.name === '身心健康')
@@ -1942,12 +1953,33 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
 // ======================================================================
 // ======================================================================
 await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 核心）', async () => {
-  // 清场：把 Aha 的闸门状态与待播载荷清空，让这一轮从干净状态开始
+  // 清场 + 造样本：把闸门状态与待播载荷清空；
+  // 并保证近 7 天的样本过得了「地板」（impact ≥ 20 且参与分光 ≥ 4 片）——
+  // 地板本身是设计要求（账太薄时名次变化只是分母噪声），所以测它之前要先把账做厚。
   await p.eval(`
     await window.electronAPI.dbEventsClearPrefix('aha_')
     await window.electronAPI.dbSettingsSet('ahaPending', '')
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const today = new Date(); today.setHours(0,0,0,0)
+    for (let i = 0; i < 5; i++) {
+      const d = dims[i]
+      await window.electronAPI.dbActionsAdd({
+        id: 'aha-floor-' + i, date: today.getTime() - i * 86400000,
+        description: 'Aha 通道验证 · 铺底', quality: 'milestone', impact: 5, isCompleted: 1,
+        createdAt: Date.now(), updatedAt: Date.now(),
+        dimensionId: d.id, branchId: null, goalId: null, mood: '',
+      })
+    }
+    // 坏日子闸门会静音结构类发现：把今天的 tired/vexed 心情清掉，否则测的是静音不是闸门
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows) {
+      if (r.date >= today.getTime() && (r.mood === 'tired' || r.mood === 'vexed')) {
+        await window.electronAPI.dbActionsUpdate(r.id, { mood: '' })
+      }
+    }
     return 1
   `)
+  await reload()
   await goto('#/')
   await sleep(600)
 

@@ -94,9 +94,12 @@ export function LightRings({ dimensions, actions }: Props) {
           y += h
         }
       } else if (lastShape) {
-        // 余影：前一次有光那天的形状，压到 0.10。不留边界，所以读不出「缺口」
+        // 余影：前一次有光那天的形状，压淡。不留边界，所以读不出「缺口」。
+        // 小露给的数是 0.10，实测在花间集的白粉底上等于没画 —— 中间那段照样是个有边界的空洞，
+        // 正是她要避免的那个失败。按她的**意图**（褪色的延续）校准到 0.22：
+        // 仍明显弱于有记录那天（0.9），但读得出是延续而不是缺席。
         let y = 0
-        ctx.globalAlpha = 0.1
+        ctx.globalAlpha = 0.22
         for (const seg of lastShape) {
           const h = seg.share * H
           ctx.fillStyle = seg.colorHex

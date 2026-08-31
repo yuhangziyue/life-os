@@ -103,6 +103,35 @@ try {
   }
   check('清掉上一轮遗留的探针（保证本轮可重复）', true, stale > 0 ? `清了 ${stale} 条` : '无遗留')
 
+  // 重灌演示数据再核设计值。
+  // 🔴 为什么必须重灌：demoSeed 的一切日期都是相对「种下那一刻」生成的，而 IndexedDB 是真持久的 ——
+  //    跨过一次午夜，就有记录滑出 30 天评分窗口，分数整体往下掉 0.2。
+  //    不重灌的话，这条断言会在「第二天再跑」时无缘无故变红，而产品根本没坏。
+  await page.eval(`await window.electronAPI.dbClearAll(); return 1`)
+  await sleep(400)
+  await page.send('Page.reload', { ignoreCache: false })
+  await sleep(2600)
+  for (let i = 0; i < 30; i++) {
+    if (await page.eval('return !!window.electronAPI')) break
+    await sleep(200)
+  }
+  check('演示数据已按当下时刻重灌（分数窗口对齐）', true)
+
+  // 主题：v3.5.1 起唯一投入的是「花间集」。这里把浏览器里存的旧偏好清掉，
+  // 验的是**新访客真正看到的那一套** —— 演示站的第一眼必须是花间集，不是历史遗留的暗夜。
+  const theme = await page.eval(`
+    localStorage.removeItem('lifeos:theme')
+    location.reload()
+    return 1
+  `)
+  await sleep(2600)
+  for (let i = 0; i < 30; i++) {
+    if (await page.eval('return !!window.electronAPI')) break
+    await sleep(200)
+  }
+  const themeNow = await page.eval(`return document.documentElement.dataset.theme`)
+  check('新访客默认落在「花间集」', themeNow === 'bloom', `data-theme=${themeNow}`)
+
   // ---- 1. shim 装上了，且没有悄悄降级 ----
   const ping = await page.eval('return window.electronAPI?.ping?.() ?? "(缺失)"')
   check('window.electronAPI 由 web shim 提供', ping === 'pong from web adapter', ping)
@@ -165,8 +194,8 @@ try {
 
   // ---- 4. 七个页面逐个渲染 + 截图 ----
   const PAGES = [
-    ['', '花'], ['#/today', '今天'], ['#/me', '我'],
-    ['#/dimensions', '维度列表'], ['#/actions', '行动记录'],
+    ['', '今天'], ['#/garden', '我的花园'], ['#/me', '我'],
+    ['#/dimensions', '维度列表'], ['#/actions', '全部记录'],
     ['#/stats', '细看数据'], ['#/review', '周对账'], ['#/handbook', '花语'],
   ]
   for (const [hash, label] of PAGES) {
@@ -270,16 +299,18 @@ try {
     const vis = el => !!el && getComputedStyle(el).display !== 'none'
     const bar = document.querySelector('[data-testid="mobile-tabbar"]')
     return {
-      tabs: bar ? bar.querySelectorAll('a').length : 0,
+      tabs: bar ? [...bar.querySelectorAll('a')].map(a => a.dataset.tab) : [],
       barVisible: vis(bar),
       fabVisible: vis(document.querySelector('[data-testid="mobile-fab"]')),
-      asideHidden: !vis(document.querySelector('aside')),
+      noAside: !document.querySelector('aside'),
       noSideScroll: document.documentElement.scrollWidth <= window.innerWidth + 1,
     }
   `)
-  check('手机尺寸下出底栏三入口 + FAB', mobile.barVisible && mobile.tabs === 3 && mobile.fabVisible,
-        JSON.stringify(mobile))
-  check('手机尺寸下侧栏收起且页面不横向溢出', mobile.asideHidden && mobile.noSideScroll, JSON.stringify(mobile))
+  check('手机尺寸下出底栏三入口 + FAB',
+        mobile.barVisible && mobile.fabVisible &&
+        mobile.tabs.join('|') === '今天|我的花园|我', mobile.tabs.join(' / '))
+  check('侧栏已删（v3.6：手机端是唯一形态）且页面不横向溢出',
+        mobile.noAside && mobile.noSideScroll, JSON.stringify(mobile))
 
   // 🔴 回归守卫：演示浮标原来钉在右下 14px，正好盖住底栏第三个入口「我」——
   // 第三个入口在手机上点不到。用 elementFromPoint 做真实命中测试，别只看坐标算差集。
@@ -300,10 +331,10 @@ try {
   check('底栏三个入口都真的点得到（没被浮标/FAB 盖住）', blocked.length === 0,
         blocked.length ? blocked.map(b => `${b.tab} 被 ${b.got} 挡住`).join('；') : hit.out.map(t => t.tab).join(' / '))
   check('FAB 自己也点得到', hit.fabReachable === true, String(hit.fabGot || ''))
-  await page.shot(path.join(SHOTS, '手机-花.png'))
-  await page.eval(`location.hash = '#/today'; return 1`)
-  await sleep(900)
   await page.shot(path.join(SHOTS, '手机-今天.png'))
+  await page.eval(`location.hash = '#/garden'; return 1`)
+  await sleep(1100)
+  await page.shot(path.join(SHOTS, '手机-我的花园.png'))
   await page.eval(`location.hash = '#/me'; return 1`)
   await sleep(900)
   await page.shot(path.join(SHOTS, '手机-我.png'))

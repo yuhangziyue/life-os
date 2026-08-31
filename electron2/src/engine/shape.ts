@@ -78,5 +78,5 @@ export function shapeSummary(
     return { kind: 'steady', text: `同一片开在最前面，${period}没变过。` }
   }
 
-  return { kind: 'thin', text: `${period}的光分成了 ${shares.length} 份。` }
+  return { kind: 'thin', text: `${period}的光分给了 ${shares.length} 片花瓣。` }
 }

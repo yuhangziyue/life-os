@@ -3,7 +3,7 @@
 # 改了 src 之后要重新 npm run deploy:pages，否则 CI 会因产物漂移而红。
 .nojekyll
 apple-touch-icon.png
-assets/index-BzSTSrLN.js
+assets/index-8n1uzfJK.js
 assets/index-eB-JpOhO.css
 icon-192.png
 icon-512.png
