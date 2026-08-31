@@ -5,6 +5,7 @@ import { calculateScoreInRange } from '../engine/scoring'
 import { gardenBirth } from '../engine/quarterly'
 import { pickReviewQuestions } from '../content/reviewQuestions'
 import { FlowerChart } from './FlowerChart'
+import { usePairFlowerSize } from '../hooks/useFlowerSize'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -23,6 +24,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
  *   - 答案可空；空答案也算走完，下一期照常从今天起算
  */
 export function MonthlyCheckin() {
+  // 并排两朵花：窄屏收小，不改布局 —— 「并排」本身就是这一屏的全部信息
+  const pairSize = usePairFlowerSize(150)
   const dimensions = useEnabledDimensions()
   const actions = useStore(s => s.actions)
   const reviews = useStore(s => s.reviews)
@@ -98,7 +101,7 @@ export function MonthlyCheckin() {
           <FlowerChart
             dimensions={dimensions}
             actions={actions}
-            size={150}
+            size={pairSize}
             scoreOverride={lastMonthScores}
           />
           <div className="text-xs text-[var(--text-muted)]">上一个月</div>
@@ -107,7 +110,7 @@ export function MonthlyCheckin() {
           <FlowerChart
             dimensions={dimensions}
             actions={actions}
-            size={150}
+            size={pairSize}
             scoreOverride={thisMonthScores}
           />
           <div className="text-xs text-[var(--text-secondary)]">这个月</div>

@@ -6,6 +6,7 @@ import { RadarChart } from '../components/RadarChart'
 import { hexToRgba } from '../services/theme'
 import { focusGold } from '../services/focus'
 import { getSnapshots } from '../db'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 type ViewMode = 'day' | 'week' | 'month' | 'year'
 
@@ -146,10 +147,8 @@ export function Stats() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-4xl mx-auto p-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-light tracking-wide">统计分析</h1>
-        </div>
+      <div className="page-pad space-y-4">
+        <SubPageHeader title="细看数据" fallback="/garden" />
 
         {/* 陪伴（C3）：不是 streak，永不清零，没有里程碑弹窗 */}
         <div className="card flex items-center gap-8" data-testid="companion-card">

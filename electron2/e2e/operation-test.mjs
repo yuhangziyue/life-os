@@ -178,10 +178,10 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
     ['#/garden', '我的花园', '02b-garden'],
     ['#/me', '这座花园', '02c-me'],
     ['#/dimensions', '维度管理', '03-dimensions'],
-    ['#/actions', '行动记录', '04-actions'],
-    ['#/stats', '统计分析', '05-stats'],
-    ['#/review', '回顾反思', '06-review'],
-    ['#/settings', '设置', '07-settings'],
+    ['#/actions', '全部记录', '04-actions'],
+    ['#/stats', '细看数据', '05-stats'],
+    ['#/review', '周对账', '06-review'],
+    ['#/settings', '偏好与设置', '07-settings'],
   ]) {
     await goto(hash)
     // 读 main 而不是 body：侧栏文案（现在也含「今天」）会让「走错页照样匹配上」，
@@ -608,7 +608,7 @@ await phase('阶段 10.2：维度 种植/休息/请回/删除（全链路接线�
 
   // 种一片新花瓣（打包版首绘慢，等到按钮出现再点）
   for (let i = 0; i < 10; i++) {
-    const ok = await p.eval(`${HELPERS}; const b = window.__t.byText('button', '种一片新花瓣'); if (b) { b.click(); return true } return false`)
+    const ok = await p.eval(`${HELPERS}; const b = window.__t.byText('button', '新花瓣'); if (b) { b.click(); return true } return false`)
     if (ok) break
     await sleep(500)
   }
@@ -796,7 +796,7 @@ await phase('阶段 10.4：主题切换（花间集 ↔ 暗夜花园 ↔ 禅意�
 await phase('阶段 10.5：花语手册（v3.1 B1）', async () => {
   await goto('#/handbook')
   const hb = await p.eval(`return {
-    title: document.body.innerText.includes('花语手册'),
+    title: document.body.innerText.includes('花语'),
     chapters: document.querySelectorAll('[data-testid="handbook-nav"] button').length,
     bodyLen: document.querySelector('[data-testid="handbook-chapter"]')?.innerText.length || 0,
   }`)
@@ -2016,14 +2016,22 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
     // Lisa 定的唯一「只减不加」时段：深夜不攒定格帧，且不落事件行 ⇒ 不消耗冷却
     check('深夜提交不攒定格帧（静音档）', submitted.pending === '', `深夜 ${hour} 点`)
   } else {
+    // 攒到的是哪一种由优先级决定（first_ever > stage_up > awaken > light_shift），
+    // 所以只断言「攒下了一条、且是四种之一」，不写死 kind
+    const kind = (submitted.pending.match(/"kind":"(\w+)"/) || [])[1] || ''
     check('白天提交把定格帧攒起来（等下次进门播）',
-          submitted.pending.length > 0 && submitted.pending.includes('light_shift'),
-          submitted.pending.slice(0, 40))
+          ['light_shift', 'stage_up', 'awaken', 'intent_set'].includes(kind),
+          `kind=${kind || '(空)'}`)
   }
 
-  // 进门：重载一次，定格帧应当在首帧就在（载荷在 loadData 里已取好，不会闪）
+  // 进门：重载一次，定格帧应当在首帧就在（载荷在 loadData 里已取好，不会闪）。
+  // 🔴 不能用固定 sleep 等它 —— 帧会自动淡出，固定等待要么赶在挂载前、要么赶在淡出后。
+  //    改成轮询「出现即读」，这也顺带验了「首帧就在，不是进门后才算」。
   await reload()
-  await sleep(1200)
+  for (let i = 0; i < 12; i++) {
+    if (await p.eval(`return !!document.querySelector('[data-testid="aha-frame"]')`)) break
+    await sleep(250)
+  }
   const frame = await p.eval(`
     const el = document.querySelector('[data-testid="aha-frame"]')
     if (!el) return { shown: false }
@@ -2036,7 +2044,7 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
       anchor: document.querySelector('[data-testid="aha-anchor"]')?.innerText || '',
       allText: el.innerText,
       // 全屏占比数字个数：只许一个
-      pctCount: (el.innerText.match(/\d+%/g) || []).length,
+      pctCount: (el.innerText.match(/\\d+%/g) || []).length,
     }
   `)
 
@@ -2045,17 +2053,25 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
   } else {
     check('进门的一眼：定格帧出现', frame.shown === true)
     if (frame.shown) {
-      check('光河八段在场', frame.segs >= 2, `${frame.segs} 段`)
-      check('三粒墨点（不是八粒 —— 三个可数的实体才能归因到花瓣）',
-            frame.inks >= 1 && frame.inks <= 3, `${frame.inks} 粒`)
       check('带日期锚（定格帧移到进门后，因果链需要它）',
             frame.anchor.length > 0, frame.anchor)
-      check('主句动词是「分」，不出现「挪」「让」',
-            /分/.test(frame.fact) && !/挪|让/.test(frame.fact), frame.fact)
-      check('主句无表扬词、无感叹号',
-            !/真棒|恭喜|加油|做得好|进步|坚持/.test(frame.fact) && !/[!！]/.test(frame.fact), frame.fact)
-      check('🔴 全屏恰好一个占比数字', frame.pctCount === 1, `${frame.pctCount} 个：${frame.num}`)
+      check('主句无表扬词、无感叹号、不出现「连续」',
+            !/真棒|恭喜|加油|做得好|进步|坚持|连续/.test(frame.fact) && !/[!！]/.test(frame.fact), frame.fact)
       check('🔴 零箭头（方向符号即评价符号）', !/[→↑↓]/.test(frame.allText))
+      // 光河那一套只在「光的分配」这一种下成立；事实型定格刻意零动画零数字
+      const isRiver = await p.eval(`return !!document.querySelector('[data-testid="light-shift"]')`)
+      if (isRiver) {
+        check('光河八段在场', frame.segs >= 2, `${frame.segs} 段`)
+        check('三粒墨点（不是八粒 —— 三个可数的实体才能归因到花瓣）',
+              frame.inks >= 1 && frame.inks <= 3, `${frame.inks} 粒`)
+        check('主句动词是「分」，不出现「挪」「让」',
+              /分/.test(frame.fact) && !/挪|让/.test(frame.fact), frame.fact)
+        check('🔴 全屏恰好一个占比数字', frame.pctCount === 1, `${frame.pctCount} 个：${frame.num}`)
+      } else {
+        check('事实型定格：零动画零占比数字（信息量在句子里）',
+              frame.inks === 0 && frame.pctCount === 0,
+              `墨点=${frame.inks} 占比数=${frame.pctCount}`)
+      }
       await p.shot(`${SHOTS}/26-aha-entry.png`)
 
       // 收起，再进门一次 —— 每天上限 1 条，不该再来

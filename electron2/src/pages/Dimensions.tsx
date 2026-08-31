@@ -4,6 +4,7 @@ import { useStore, useEnabledDimensions } from '../stores/useStore'
 import { calculateScore, dimensionStage } from '../engine/scoring'
 import { focusGold } from '../services/focus'
 import { PLANT_PALETTE } from '../models/dimension'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 export function Dimensions() {
   const dimensions = useEnabledDimensions()
@@ -55,16 +56,17 @@ export function Dimensions() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-4xl mx-auto p-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-light tracking-wide">维度管理</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-1">生命之花的每一片花瓣</p>
-          </div>
-          <button className="btn btn-ghost text-sm" onClick={() => setShowAdd(!showAdd)}>
-            + 种一片新花瓣
-          </button>
-        </div>
+      <div className="page-pad space-y-4">
+        <SubPageHeader
+          title="维度管理"
+          subtitle="生命之花的每一片花瓣"
+          fallback="/garden"
+          right={
+            <button className="btn btn-ghost text-xs" onClick={() => setShowAdd(!showAdd)}>
+              + 新花瓣
+            </button>
+          }
+        />
 
         {/* 新维度表单 */}
         {showAdd && (

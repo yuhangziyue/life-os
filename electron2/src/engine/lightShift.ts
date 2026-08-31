@@ -187,3 +187,18 @@ export const TOO_LIGHT = '这一下太轻，带子还没动。'
 
 /** 记住「已经说过了」的 settings key */
 export const LIGHT_LAW_SEEN_KEY = 'ahaLightExplained'
+
+/**
+ * 定格帧的载荷（v3.6.1）。
+ *
+ * 上一轮只有 light_shift 一种，直接把 LightShift 塞进 store 就够了；
+ * 现在要承载四种，必须是判别联合 —— 否则渲染层只能靠 `in` 猜字段，改一次坏三处。
+ *
+ * 🔴 单次记录最多攒 1 条（圆桌闸门第 1 条）：多条同时命中时按信息价值取第一，
+ *   **其余直接丢弃，不排队** —— 排队 = 承诺 = 落空 = 奖励。
+ *   优先级：first_ever > stage_up > awaken > light_shift
+ *   （越靠前越是「一辈子/很久才一次」的事实，越值得占掉当天唯一的那个额度）
+ */
+export type AhaPayload =
+  | { kind: 'light_shift'; at: number; shift: LightShift }
+  | { kind: 'stage_up' | 'awaken' | 'intent_set'; at: number; headline: string; lines: string[]; colorHex: string }

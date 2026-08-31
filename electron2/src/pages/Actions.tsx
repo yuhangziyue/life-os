@@ -4,6 +4,7 @@ import { ActionRow } from '../components/ActionRow'
 import { Select } from '../components/ui/Select'
 import { QUALITY_LABELS } from '../models/action'
 import type { ActionQuality } from '../models/action'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 export function Actions() {
   const actions = useStore(s => s.actions)
@@ -36,18 +37,9 @@ export function Actions() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-light tracking-wide">行动记录</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-1">
-              共 {filtered.length} 条记录
-            </p>
-          </div>
-          <button className="btn btn-primary" onClick={() => setQuickAddOpen(true)}>
-            + 快速记录
-          </button>
-        </div>
+      <div className="page-pad space-y-4">
+        {/* 记录入口统一为常驻 FAB，这里不再重复一个按钮（v3.6.1 简约收口） */}
+        <SubPageHeader title="全部记录" subtitle={`共 ${filtered.length} 条`} fallback="/" />
 
         {/* 筛选 */}
         <div className="flex gap-3 flex-wrap">

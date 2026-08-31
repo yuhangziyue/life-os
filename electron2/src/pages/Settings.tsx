@@ -6,6 +6,7 @@ import { THEMES } from '../services/theme'
 import { POSITIONING, APP_VERSION, ABOUT_PROMISES, ABOUT_PROMISES_WEB, ABOUT_DISCLAIMER } from '../content/about'
 import { isWebBuild, webStorageStatus, storagePromiseLines } from '../services/storage'
 import { PetalIntentEditor } from '../components/PetalIntentEditor'
+import { AhaShowcase } from '../components/AhaShowcase'
 import { gardenBirth } from '../engine/quarterly'
 
 /** AI 配置入口开关：AI 能力达标（50 条 eval + ≥90% 准确率 + 建议式交互）前不对用户露出 */
@@ -82,7 +83,7 @@ export function Settings() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-8 space-y-8">
+      <div className="page-pad space-y-4">
         <div>
           <h1 className="text-2xl font-light tracking-wide">我</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">偏好与设置 · 我的数据与承诺</p>
@@ -94,7 +95,7 @@ export function Settings() {
           <div className="flex items-baseline gap-6">
             <div>
               <div className="text-2xl font-light text-[var(--accent)]">{companionDays}</div>
-              <div className="text-xs text-[var(--text-muted)] mt-0.5">陪伴天数</div>
+              <div className="text-xs text-[var(--text-muted)] mt-0.5 whitespace-nowrap">陪伴天数</div>
             </div>
             <div className="text-xs text-[var(--text-muted)] leading-relaxed">
               花园生日 {birthStr}
@@ -118,6 +119,10 @@ export function Settings() {
 
         {/* 八片花瓣的现在 · 想要开到哪 · 约定（v3.6，子曰命题的第三个 tab 核心） */}
         <PetalIntentEditor />
+
+        {/* Aha 展柜：只在网页演示版出现。
+            正式版里「想看就能看」会毁掉稀有性，而稀有性是这套设计的根基 */}
+        {isWebBuild() && <AhaShowcase />}
 
         {/* 花语：从导航栏降为一个条目 */}
         <Link to="/handbook" className="drawer-link" data-testid="link-handbook">

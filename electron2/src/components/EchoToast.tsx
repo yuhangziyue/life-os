@@ -14,6 +14,7 @@ import { useStore } from '../stores/useStore'
  */
 export function EchoToast() {
   const echo = useStore(s => s.echo)
+  const receiptLine = useStore(s => s.receiptLine)
   const clearEcho = useStore(s => s.clearEcho)
   const openQuickAddWith = useStore(s => s.openQuickAddWith)
   const dimensions = useStore(s => s.dimensions)
@@ -43,6 +44,13 @@ export function EchoToast() {
           style={{ backgroundColor: echo.color }}
         />
         <div className="min-w-0">
+          {/* 时刻类 Aha 那一行（v3.6.1）：深夜 / 清晨 / 当天首条 / 某片首条。
+              它们不弹层，只在这里占一行 —— 深夜时它是全产品最短的一句「记下了。」 */}
+          {receiptLine && (
+            <p className="text-sm text-[var(--text-primary)] leading-relaxed mb-1.5" data-testid="receipt-line">
+              {receiptLine}
+            </p>
+          )}
           {echo.lines.map((line, i) => (
             <p key={i} className={`text-sm leading-relaxed ${i === 0 ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
               {line}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { HANDBOOK } from '../content/handbook'
 import { logEvent } from '../db'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 /**
  * 花语手册（v3.1 B1）——「这座花园是什么」的常驻答案。
@@ -16,11 +17,8 @@ export function Handbook() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-light tracking-wide">花语手册</h1>
-          <p className="text-sm text-[var(--text-muted)] mt-1">这座花园是什么，以及它对你的承诺</p>
-        </div>
+      <div className="page-pad space-y-4">
+        <SubPageHeader title="花语" subtitle="这座花园是什么，以及它对你的承诺" fallback="/me" />
 
         {/* 章节印章导航。选中态要一眼看得出（子曰 2026-08-18）：
             印章变实心 accent、文字提到主文字色、底色加深并描边、整枚微微抬起 */}

@@ -12,11 +12,16 @@ import {
   seedIfNeeded, uuid,
 } from '../db'
 import { loadAmbience, saveAmbience, applyCursorSetting, type Ambience } from '../services/ambience'
-import { calculateScore, overallScore, coveredDimensions, startOfToday } from '../engine/scoring'
+import { calculateScore, overallScore, coveredDimensions, startOfToday, dimensionVitality } from '../engine/scoring'
 import { composeEcho, composeCompleteEcho, type Echo } from '../engine/echo'
-import { composeLightShift, LIGHT_LAW_SEEN_KEY, type LightShift } from '../engine/lightShift'
+import { composeLightShift, LIGHT_LAW_SEEN_KEY, type AhaPayload } from '../engine/lightShift'
 import {
-  checkAhaGate, hasSampleFloor, isBackfill, isNight, isRoughDay,
+  detectAwaken, detectStageShift, isDailyFirst, awakenLine, stageShiftLines,
+  composeIntentSet, intentSetLines,
+  DAILY_FIRST_LINE, PETAL_FIRST_LINE, NIGHT_LINE, EARLY_LINE,
+} from '../engine/ahaMoments'
+import {
+  checkAhaGate, hasSampleFloor, isBackfill, isNight, isEarly, isRoughDay,
   EV_PLAYED, EV_KIND_PREFIX, type AhaKind,
 } from '../engine/ahaGate'
 import { loadAIConfig, saveAIConfig, testConnection } from '../services/ai'
@@ -67,12 +72,15 @@ function ahaDeps() {
  *   · 中断回归 7 天内不出现
  *   · 不阻断操作、不需点掉、滑走即消、当日不再补
  */
-async function takePendingAha(actions: Action[]): Promise<{ aha: LightShift | null; ahaStampedAt: number | null }> {
-  const none = { aha: null, ahaStampedAt: null }
+async function takePendingAha(
+  actions: Action[],
+): Promise<{ aha?: AhaPayload; ahaStampedAt?: number }> {
+  /** 取不到就返回**空对象**，不是 { aha: null } —— 见 loadData 里那段注释 */
+  const none: { aha?: AhaPayload; ahaStampedAt?: number } = {}
   try {
     const raw = await getSetting(AHA_PENDING_KEY)
     if (!raw) return none
-    const payload = JSON.parse(raw) as { kind: AhaKind; shift: LightShift; at: number }
+    const payload = JSON.parse(raw) as AhaPayload & { gateKind?: AhaKind }
     const now = Date.now()
 
     // 进门这一刻若是深夜，同样收声（小艾三轮：深夜闸门的判定时刻要跟着挪到进门时刻）
@@ -86,13 +94,14 @@ async function takePendingAha(actions: Action[]): Promise<{ aha: LightShift | nu
       return none
     }
 
-    const gate = await checkAhaGate(payload.kind, ahaDeps(), { now })
+    const gateKind: AhaKind = payload.gateKind ?? (payload.kind as AhaKind)
+    const gate = await checkAhaGate(gateKind, ahaDeps(), { now })
     if (!gate.pass) return none
 
     await setSetting(AHA_PENDING_KEY, '')
     await logEvent(EV_PLAYED)
-    await logEvent(`${EV_KIND_PREFIX}${payload.kind}`)
-    return { aha: payload.shift, ahaStampedAt: payload.at }
+    await logEvent(`${EV_KIND_PREFIX}${gateKind}`)
+    return { aha: payload, ahaStampedAt: payload.at }
   } catch {
     return none
   }
@@ -123,8 +132,8 @@ interface AppState {
 
   theme: ThemeId
   echo: Echo | null
-  /** 「光的分配」Aha（v3.5 M5）：与 echo 同时产生，两者一起构成记录后的那一屏 */
-  aha: LightShift | null
+  /** 定格帧载荷（v3.6.1：四种 kind 的判别联合）。它只在「进门的一眼」被消费 */
+  aha: AhaPayload | null
   /** 那条「总和恒为 100%」的解释是否已经说过（说一次就够） */
   ahaLawSeen: boolean
   /** 点花瓣弹出的维度面板（v3.5 M7）；null = 没开。花瓣即导航，取代了「维度管理」那一栏 */
@@ -140,6 +149,12 @@ interface AppState {
   pulseDimId: string | null
   /** 回归卡已收起的那次中断（值 = 上次记录时刻）；0 = 没收过 */
   returnCardDismissedAt: number
+  /**
+   * 时刻类 Aha 的那一行（v3.6.1）。
+   * 深夜 / 清晨 / 当天首条 / 某片首条 —— 这四种**不弹层**，只改回执那一行字。
+   * 深夜是唯一「只减不加」的时段：它只留全产品最短的一句「记下了。」
+   */
+  receiptLine: string | null
 
   ambience: Ambience
   onboardingOpen: boolean
@@ -235,6 +250,7 @@ export const useStore = create<AppState>((set, get) => ({
   ahaStampedAt: null,
   pulseDimId: null,
   returnCardDismissedAt: 0,
+  receiptLine: null,
   ambience: loadAmbience(),
   onboardingOpen: false,
   quarterlyReviews: [],
@@ -283,6 +299,9 @@ export const useStore = create<AppState>((set, get) => ({
       )
       LOG('loadData', 'Step 3: 完成')
 
+      // 取待播帧：已经有一屏在显示时不再取（避免重复消费）
+      const takenAha = get().aha ? {} : await takePendingAha(actions)
+
       set({
         dimensions: updatedDims,
         scoreRubrics,
@@ -295,8 +314,13 @@ export const useStore = create<AppState>((set, get) => ({
         ahaLawSeen: lawSeen === '1',
         returnCardDismissedAt: Number(returnSeen) || 0,
         // 待播的定格帧必须在**首帧渲染前**就算完并放进同一批 set ——
-        // 进门后再算会闪一下才播，那比不播更糟（小露三轮的护栏）
-        ...(await takePendingAha(actions)),
+        // 进门后再算会闪一下才播，那比不播更糟（小露三轮的护栏）。
+        //
+        // 🔴 只在**真的取到载荷时**才写这两个字段（`takenAha` 是条件展开）。
+        //   无条件写 `aha: null` 会造成两个真实故障：
+        //   ① dev 的 StrictMode 双跑 effect ⇒ 第一次取出定格帧、第二次立刻擦掉，帧永远不出现
+        //   ② 每次 addAction 结尾都会 loadData ⇒ 正在读的那一屏定格会被下一笔记录擦掉
+        ...takenAha,
         isLoading: false,
         loadError: null,
       })
@@ -318,7 +342,7 @@ export const useStore = create<AppState>((set, get) => ({
   openQuickAddWith: (dimensionId) => set({ quickAddOpen: true, quickAddPreset: dimensionId }),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setTheme: (theme) => set({ theme }),
-  clearEcho: () => set({ echo: null }),
+  clearEcho: () => set({ echo: null, receiptLine: null }),
   clearAha: () => set({ aha: null, ahaStampedAt: null }),
 
   dismissReturnCard: async (lastAt) => {
@@ -445,8 +469,32 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateDimension: async (id, data) => {
+    // 「立了意图」的当场：从「什么都没写」变成「写了目标或约定」——每片一辈子只演一次。
+    // 🔴 这条 Aha 的全部理由（晓雅一轮）：**设定计划的当场必须显示代价** ——
+    //   你说要给这片多一些，那些光眼下在别处。不显示这个，计划就退化成待办清单。
+    const prev = get().dimensions.find(d => d.id === id)
+    const wasEmpty = !!prev && prev.targetScore == null && !prev.pactText
     await updateDimension(id, data)
     await get().loadData()
+
+    if (wasEmpty) {
+      const now = get().dimensions.find(d => d.id === id)
+      const nowSet = !!now && (now.targetScore != null || !!now.pactText)
+      if (now && nowSet) {
+        const seen = `${EV_KIND_PREFIX}intent_set:${id}`
+        try {
+          if (!(await window.electronAPI.dbEventsHas(seen))) {
+            const info = composeIntentSet(now)
+            const lines = intentSetLines(info)
+            await logEvent(seen)
+            await setSetting(AHA_PENDING_KEY, JSON.stringify({
+              kind: 'intent_set', at: Date.now(), gateKind: 'intent_set',
+              headline: lines[0], lines: lines.slice(1), colorHex: now.colorHex,
+            }))
+          }
+        } catch { /* 攒不下不挡编辑路径 */ }
+      }
+    }
   },
 
   deleteDimension: async (id) => {
@@ -517,25 +565,68 @@ export const useStore = create<AppState>((set, get) => ({
     await addAction(newAction)
     await get().loadData()
 
-    // 回执层：这一段做一次饱和度脉冲。每次记录都有，不阻断、无文字
-    if (echo) set({ echo, pulseDimId: action.dimensionId })
-    else set({ pulseDimId: action.dimensionId })
-
-    // 静音档（Lisa 二轮定为唯一「只减不加」的时段）：
-    // 深夜 22:00–05:00 与坏日子（当日有 tired/vexed 心情）一律不攒定格帧，
-    // 且**不落任何事件行 ⇒ 不消耗冷却**（小艾三轮要求这条必须在代码里写死一套）。
     const nowTs = newAction.createdAt
-    if (isNight(nowTs) || isRoughDay(get().actions, nowTs)) return
-
-    if (!shift) return
     const backfill = isBackfill(newAction)
-    const floorOk = hasSampleFloor(dimensions, get().actions, nowTs)
-    const gate = await checkAhaGate('light_shift', ahaDeps(), { backfill, floorOk, now: nowTs })
-    if (!gate.pass) return
 
-    try {
-      await setSetting(AHA_PENDING_KEY, JSON.stringify({ kind: 'light_shift', shift, at: nowTs }))
-    } catch { /* 攒不下就当没这回事，不挡记录路径 */ }
+    // ---- 时刻类 Aha：不弹层，只改回执那一行字（v3.6.1）----
+    // 补记一律屏蔽 —— 「今天的账开了」在补记场景下是假的（老架二轮）
+    let receiptLine: string | null = null
+    if (!backfill) {
+      if (isNight(nowTs)) receiptLine = NIGHT_LINE
+      else if (dim && !actions.some(a => a.isCompleted && a.dimensionId === dim.id)) {
+        receiptLine = PETAL_FIRST_LINE(dim.name)     // 这片花瓣有史以来第一条
+      } else if (isDailyFirst(actions, nowTs)) {
+        receiptLine = isEarly(nowTs) ? EARLY_LINE : DAILY_FIRST_LINE
+      }
+    }
+
+    // 回执层：光带里那一段做一次饱和度脉冲。每次记录都有，不阻断
+    set({ echo, pulseDimId: action.dimensionId, receiptLine })
+
+    // ---- 形态类 Aha：不当场播，攒到下次进门 ----
+    // 静音档（Lisa 二轮定为唯一「只减不加」的时段）：深夜与坏日子一律不攒，
+    // 且**不落任何事件行 ⇒ 不消耗冷却**（小艾三轮要求这条必须在代码里写死一套）。
+    if (isNight(nowTs) || isRoughDay(get().actions, nowTs)) return
+    if (!dim) return
+
+    const floorOk = hasSampleFloor(dimensions, get().actions, nowTs)
+    const dormantNames = dimensions
+      .filter(d => d.id !== dim.id && dimensionVitality(d, actions).dormant)
+      .map(d => d.name)
+
+    // 🔴 单次记录最多攒 1 条，按信息价值取第一，其余**直接丢弃不排队**
+    //    （排队 = 承诺 = 落空 = 奖励，圆桌闸门第 1 条）
+    const stage = detectStageShift({ dimension: dim, actionsBefore: actions, impact: newAction.impact })
+    const awaken = detectAwaken({ dimension: dim, actionsBefore: actions, now: nowTs })
+
+    const candidates: { kind: AhaKind; payload: AhaPayload }[] = []
+    if (shift?.firstEver) {
+      candidates.push({ kind: 'first_ever', payload: { kind: 'light_shift', at: nowTs, shift } })
+    }
+    if (stage) {
+      const lines = stageShiftLines(stage, dormantNames)
+      candidates.push({
+        kind: 'stage_up',
+        payload: { kind: 'stage_up', at: nowTs, headline: lines[0], lines: lines.slice(1), colorHex: stage.colorHex },
+      })
+    }
+    if (awaken) {
+      candidates.push({
+        kind: 'awaken',
+        payload: { kind: 'awaken', at: nowTs, headline: awakenLine(awaken), lines: [], colorHex: awaken.colorHex },
+      })
+    }
+    if (shift && !shift.firstEver) {
+      candidates.push({ kind: 'light_shift', payload: { kind: 'light_shift', at: nowTs, shift } })
+    }
+
+    for (const c of candidates) {
+      const gate = await checkAhaGate(c.kind, ahaDeps(), { backfill, floorOk, now: nowTs })
+      if (!gate.pass) continue
+      try { await setSetting(AHA_PENDING_KEY, JSON.stringify({ ...c.payload, gateKind: c.kind })) }
+      catch { /* 攒不下就当没这回事，不挡记录路径 */ }
+      return                                          // 只攒第一条，剩下的丢掉
+    }
   },
 
   updateAction: async (id, data) => {

@@ -197,7 +197,7 @@ export function PetalIntentEditor() {
       </div>
 
       <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-        写多少片都可以，一片都不写也可以。这里不统计你做到了几次，也不会有谁来问你。
+        写多少片都可以，一片都不写也可以。这里不统计你做到了几次。
       </p>
     </div>
   )

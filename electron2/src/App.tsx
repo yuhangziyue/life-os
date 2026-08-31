@@ -52,7 +52,7 @@ function EntryAha() {
   const stampedAt = useStore(s => s.ahaStampedAt)
   const clearAha = useStore(s => s.clearAha)
   if (!aha) return null
-  return <LightShiftAha shift={aha} stampedAt={stampedAt ?? undefined} onClose={clearAha} />
+  return <LightShiftAha payload={aha} stampedAt={stampedAt ?? undefined} onClose={clearAha} />
 }
 
 export default function App() {

@@ -3,6 +3,7 @@ import { useStore, useEnabledDimensions } from '../stores/useStore'
 import { calculateScoreInRange } from '../engine/scoring'
 import { pickReviewQuestions } from '../content/reviewQuestions'
 import { MOODS } from '../models/action'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 export function ReviewPage() {
   const dimensions = useEnabledDimensions()
@@ -95,10 +96,8 @@ export function ReviewPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-light tracking-wide">回顾反思</h1>
-        </div>
+      <div className="page-pad space-y-4">
+        <SubPageHeader title="周对账" subtitle="五分钟看一眼形状有没有偏出你的意图" fallback="/garden" />
 
         {/* 标签切换 */}
         <div className="seg w-fit">

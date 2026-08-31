@@ -5,6 +5,7 @@ import { calculateScore, getRubric } from '../engine/scoring'
 import { generateGoal } from '../services/ai'
 import type { Goal } from '../models/goal'
 import { v4 as uuid } from '../db/uuid'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 export function DimensionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -100,11 +101,10 @@ export function DimensionDetail() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-8 space-y-8">
-        {/* 返回 */}
-        <button className="btn btn-ghost text-sm" onClick={() => navigate('/dimensions')}>
-          ← 返回维度列表
-        </button>
+      <div className="page-pad space-y-8">
+        {/* 返回：走 navigate(-1) —— 这一页可能从花瓣热区、也可能从维度列表进来，
+            硬编码目标必然有一半是错的（v3.6.1） */}
+        <SubPageHeader title={dim.name} fallback="/garden" />
 
         {/* 标题 + 评分 */}
         <div className="card">

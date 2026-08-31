@@ -153,7 +153,7 @@ export function PeriodCompare({ dimensions, actions }: Props) {
       )}
 
       <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-        八片共享同一份光，一处多一点必然是别处少一点。这里不说涨跌，只说去处。
+        八片共享同一份光。这里不说涨跌，只说去处。
       </p>
     </div>
   )

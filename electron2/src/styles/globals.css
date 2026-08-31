@@ -1217,6 +1217,24 @@ html:not([data-cursor='off']) textarea {
   backdrop-filter: blur(10px);
 }
 
+/* 🔴 单个 tab 的排版必须也在无条件层：上一轮把 .mobile-tabbar / .mobile-fab 提上来了，
+   却把 .mobile-tab 留在 max-width:860px 的媒体查询里 ——
+   于是宽屏下印章与标签横排成了「今今天」「花我的花园」「我我」。 */
+.mobile-tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 0.55rem 0 0.5rem; color: var(--text-muted);
+  position: relative; min-height: 56px;
+}
+.mobile-tab-seal {
+  width: 28px; height: 28px; display: grid; place-items: center;
+  border-radius: 6px; font-size: 1.05rem;
+  font-family: 'Songti SC', 'STSong', serif; line-height: 1;
+}
+.mobile-tab-label { font-size: 0.65rem; letter-spacing: 0.1em; }
+.mobile-tab.is-on { color: var(--accent); }
+.mobile-tab.is-on .mobile-tab-seal { background: var(--accent); color: var(--accent-contrast); }
+.mobile-tab-bud { position: absolute; top: 4px; right: 22%; font-size: 9px; opacity: 0.75; }
+
 .mobile-fab {
   display: grid;
   position: fixed; z-index: 46;
@@ -1449,4 +1467,88 @@ html:not([data-cursor='off']) textarea {
 @media (prefers-reduced-motion: reduce) {
   .aha-river > span, .light-band-track > div { transition: none; }
   .aha-glint { animation: none; opacity: 0; }
+}
+
+/* ---------- 二级页页头（v3.6.1）---------- */
+.subpage-head { display: flex; align-items: center; gap: 10px; padding: 2px 0 2px; }
+.subpage-back {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 17px; line-height: 1;
+  display: grid; place-items: center;
+}
+.subpage-back:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.subpage-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.subpage-title { min-width: 0; flex: 1; }
+.subpage-title h1 {
+  font-size: 1.25rem; font-weight: 300; letter-spacing: 0.04em; margin: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.subpage-title p {
+  font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.subpage-right { flex: 0 0 auto; }
+
+/* 二级页里的宽内容（汇总表 / 热力图）自己横向滚，页面本体永不横向溢出 */
+.page-pad table { min-width: 520px; }
+.page-pad .card > .overflow-x-auto,
+.page-pad .card.overflow-x-auto { -webkit-overflow-scrolling: touch; }
+
+/* ---------- 三个仪式浮层的窄屏形态（v3.6.1）----------
+   季度会谈五幕 / 首启三幕 / 月度微校准 —— 「记录轻 · 回顾重」里的**重**全在这三个里，
+   而它们原本是桌面弹窗尺寸（max-w-3xl/4xl + 若干无断点前缀的 grid-cols-2）。
+   收口原则：宽度收进手机宽列；无前缀的两列布局在窄屏塌成一列；
+   **但「并排两朵花」不塌** —— 并排本身就是那一屏的全部信息（本月 vs 上月）。 */
+.quarterly-stage-inner {
+  padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+}
+.quarterly-stage-inner > div { max-width: min(100%, var(--phone-col)); }
+
+@media (min-width: 861px) {
+  /* 宽屏仍然上下居中，观感不退化 */
+  .quarterly-stage-inner { align-items: center; padding: 2rem; }
+}
+
+@media (max-width: 520px) {
+  .narrow-one-col { grid-template-columns: 1fr; }
+  /* 并排两朵花那一处例外：它是 flex，不受上面影响，只把间距收紧 */
+  [data-testid='monthly-checkin'] .flex.gap-6 { gap: 0.75rem; }
+  /* 首启三幕：桌面弹窗宽度收进手机宽列 */
+  [data-testid='onboarding'] .max-w-4xl,
+  [data-testid='onboarding'] .max-w-xl,
+  [data-testid='onboarding'] .max-w-md { max-width: 100%; }
+  [data-testid='onboarding'] .p-8 { padding: 1rem; }
+  [data-testid='onboarding'] .p-6 { padding: 0.9rem; }
+}
+
+/* ---------- 事实型定格帧（stage_up / awaken / intent_set，v3.6.1）----------
+   零动画、零数字。它们的信息量在句子里 —— 加动效只会变成表演。
+   「简约」在这里的具体含义：能用一句话说完的，不画第二样东西。 */
+.aha-dot {
+  display: block; width: 8px; height: 8px; border-radius: 50%;
+  margin: 0 0 14px;
+}
+.aha-line {
+  margin: 10px 0 0; font-size: 0.8rem; line-height: 1.75; color: var(--text-secondary);
+}
+.aha-line:first-of-type { color: var(--text-secondary); }
+
+/* ---------- Aha 展柜（仅演示版，v3.6.1）---------- */
+.showcase-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+.showcase-row:last-child { border-bottom: none; }
+.showcase-meta { min-width: 0; flex: 1; }
+.showcase-title { display: block; font-size: 13px; color: var(--text-primary); }
+.showcase-when { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.showcase-play {
+  flex: 0 0 auto; font-size: 11px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--accent-dim); color: var(--accent); background: transparent;
+}
+.showcase-play:hover { background: var(--bg-hover); }
+.showcase-line {
+  flex: 0 0 auto; max-width: 46%; font-size: 11px; color: var(--text-secondary);
+  text-align: right; line-height: 1.5;
 }

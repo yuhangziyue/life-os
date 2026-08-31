@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useFlowerSize, usePairFlowerSize } from '../hooks/useFlowerSize'
 import { useStore, useEnabledDimensions, useCompanionDays } from '../stores/useStore'
 import { FlowerChart } from './FlowerChart'
 import { PetalScoreRow } from './PetalScoreRow'
@@ -24,6 +25,11 @@ import {
  */
 
 export function QuarterlyTalk() {
+  // 花形尺寸跟视口挂钩，不写死（v3.6.1：窄屏下 280 的花会贴边）
+  const flowerLg = useFlowerSize(280)
+  const flowerMd = useFlowerSize(260)
+  const flowerSm = useFlowerSize(220)
+  const flowerPair = usePairFlowerSize(200)
   const session = useStore(s => s.quarterlySession)
   const dimensions = useEnabledDimensions()
   const actions = useStore(s => s.actions)
@@ -79,7 +85,7 @@ export function QuarterlyTalk() {
       <Shell testId="quarterly-closing">
         <div className="text-center space-y-6 animate-fade-in">
           <div className="flex justify-center animate-bloom">
-            <FlowerChart dimensions={dimensions} actions={actions} size={260} />
+            <FlowerChart dimensions={dimensions} actions={actions} size={flowerMd} />
           </div>
           <h2 className="text-2xl font-light tracking-wide">{QUARTERLY_CLOSING.title}</h2>
           <p className="text-xs text-[var(--text-muted)]">{QUARTERLY_CLOSING.note}</p>
@@ -120,7 +126,7 @@ export function QuarterlyTalk() {
                 <FlowerChart
                   dimensions={dimensions}
                   actions={actions}
-                  size={220}
+                  size={flowerSm}
                   scoreOverride={lastCompleted.scores}
                   focusPreview={lastCompleted.focusDimensionIds}
                 />
@@ -165,7 +171,7 @@ export function QuarterlyTalk() {
               <FlowerChart
                 dimensions={dimensions}
                 actions={actions}
-                size={280}
+                size={flowerLg}
                 spotlightId={dim.id}
                 scoreOverride={scores}
               />
@@ -214,13 +220,13 @@ export function QuarterlyTalk() {
       {act === 3 && (
         <div className="space-y-5" data-testid="quarterly-act-3">
           {/* 并排优于叠加：叠加的视觉语义是「偏差」，并排的语义是「两张不同时间的照片」（小露） */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 narrow-one-col">
             <div className="card p-4 flex flex-col items-center gap-2">
               <div className="text-xs text-[var(--text-muted)]">上一季</div>
               <FlowerChart
                 dimensions={dimensions}
                 actions={actions}
-                size={200}
+                size={flowerPair}
                 scoreOverride={lastCompleted?.scores ?? {}}
                 focusPreview={lastCompleted?.focusDimensionIds ?? []}
               />
@@ -230,14 +236,14 @@ export function QuarterlyTalk() {
               <FlowerChart
                 dimensions={dimensions}
                 actions={actions}
-                size={200}
+                size={flowerPair}
                 scoreOverride={scores}
                 focusPreview={[]}
               />
             </div>
           </div>
           {/* 只用形态词，禁用涨跌语义：没有箭头，没有红绿，没有百分比 */}
-          <div className="card p-4 grid grid-cols-2 gap-x-6 gap-y-2" data-testid="quarterly-delta-list">
+          <div className="card p-4 grid grid-cols-2 gap-x-6 gap-y-2 narrow-one-col" data-testid="quarterly-delta-list">
             {dimensions.map(d => {
               const before = lastCompleted?.scores[d.id]
               const after = scores[d.id] ?? d.currentScore
@@ -273,14 +279,14 @@ export function QuarterlyTalk() {
             <FlowerChart
               dimensions={dimensions}
               actions={actions}
-              size={280}
+              size={flowerLg}
               focusPreview={focusIds}
               scoreOverride={scores}
             />
           </div>
           <div className="space-y-3">
             <p className="text-base leading-relaxed">{copy.questions[0]}</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 narrow-one-col">
               {dimensions.map(d => {
                 const on = focusIds.includes(d.id)
                 return (
@@ -359,12 +365,13 @@ export function QuarterlyTalk() {
 function Shell({ children, testId }: { children: React.ReactNode; testId: string }) {
   return (
     <div
-      className="fixed inset-0 z-[75] overflow-y-auto"
+      className="fixed inset-0 z-[75] overflow-y-auto quarterly-stage"
       data-testid={testId}
       style={{ background: 'var(--bg-primary)' }}
     >
-      <div className="min-h-full flex items-center justify-center p-8">
-        <div className="w-full max-w-3xl animate-fade-in">{children}</div>
+      {/* v3.6.1：窄屏下不再上下居中（内容一长就把顶部顶出视口），改成顶对齐 + 手机宽列 */}
+      <div className="min-h-full flex items-start justify-center quarterly-stage-inner">
+        <div className="w-full animate-fade-in">{children}</div>
       </div>
     </div>
   )

@@ -5,6 +5,7 @@ import { renderPostcard } from '../services/postcard'
 import { FlowerChart } from './FlowerChart'
 import { FlowerLogo } from './FlowerLogo'
 import { PetalScoreRow } from './PetalScoreRow'
+import { useFlowerSize } from '../hooks/useFlowerSize'
 
 /**
  * 首启引导三幕（v3.3 T1，由 v3.1 的四幕收缩而来）——
@@ -36,6 +37,8 @@ const DIMENSION_INTROS: Record<string, string> = {
 }
 
 export function Onboarding() {
+  // 首启三幕的花：同样不写死（v3.6.1）
+  const onbFlower = useFlowerSize(260)
   const dimensions = useEnabledDimensions()
   const actions = useStore(s => s.actions)
   const completeOnboarding = useStore(s => s.completeOnboarding)
@@ -163,7 +166,7 @@ export function Onboarding() {
                   <FlowerChart
                     dimensions={dimensions}
                     actions={actions}
-                    size={300}
+                    size={onbFlower}
                     scoreOverride={scores}
                   />
                 </div>
@@ -182,7 +185,7 @@ export function Onboarding() {
             <div className="text-center space-y-6">
               <h2 className="text-2xl font-light tracking-wide">花开了</h2>
               <div ref={bloomHost} className="flex justify-center animate-bloom">
-                <FlowerChart dimensions={dimensions} actions={actions} size={280} />
+                <FlowerChart dimensions={dimensions} actions={actions} size={onbFlower} />
               </div>
 
               {/* 第一份代价快照：核心价值在第 1 天兑现。

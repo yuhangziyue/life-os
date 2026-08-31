@@ -95,19 +95,17 @@ export function Garden() {
           <FlowerChart dimensions={dimensions} actions={actions} size={300} petalLinkable />
           <div className="text-center space-y-1.5">
             <div className="text-2xl font-light tracking-wide text-[var(--accent)]">{stage}</div>
-            <div className="text-sm text-[var(--text-secondary)]">
-              今日照顾了 {covered}/{dimensions.length} 片花瓣
-            </div>
             {shape && (
               <div className="text-sm text-[var(--text-secondary)]" data-testid="shape-summary">
                 {shape.text}
               </div>
             )}
-            {dormantDims.length > 0 && (
-              <div className="text-xs text-[var(--text-muted)] leading-relaxed px-2">
-                有 {dormantDims.length} 片花瓣合着，它们在安静地等你
-              </div>
-            )}
+            {/* 简约收口（v3.6.1）：这里原本是四行文字（状态词/今日照顾/形状句/沉睡各一行）。
+                合并成一行小字 —— 花下面的字越多，花本身越不像第一语言 */}
+            <div className="text-xs text-[var(--text-muted)] leading-relaxed px-2">
+              今日照顾了 {covered}/{dimensions.length} 片花瓣
+              {dormantDims.length > 0 && ` · 有 ${dormantDims.length} 片合着，在安静地等你`}
+            </div>
           </div>
           <div className="w-full px-1">
             <LightBand dimensions={dimensions} actions={actions} />
@@ -169,9 +167,6 @@ export function Garden() {
                 <span className="petal-row-share">{Math.round(share * 100)}%</span>
               </button>
             ))}
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pt-2">
-              点一片花瓣看它的近况。合着的排在最后，但一片都不会被藏起来。
-            </p>
           </div>
         ) : (
           <PeriodCompare dimensions={dimensions} actions={actions} />

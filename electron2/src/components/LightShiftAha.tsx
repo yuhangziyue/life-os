@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useStore, useEnabledDimensions } from '../stores/useStore'
 import {
-  LIGHT_LAW, TOO_LIGHT, pct, shareDelta, shiftFact, type LightShift,
+  LIGHT_LAW, TOO_LIGHT, pct, shareDelta, shiftFact,
+  type AhaPayload, type LightShift,
 } from '../engine/lightShift'
 
 /**
@@ -36,13 +37,62 @@ const RISE_MS = 160        // 退潮
 const HOLD_MS = 60         // 呼吸口
 const FLY_MS = 600         // 三粒飞行总窗口（与花瓣补间同一条时间轴）
 const ABSORB_MS = 150
-const AUTO_CLOSE_MS = 4200 // 不需要点掉，滑走即消；到时自己走
+/**
+ * 自动淡出。不需要点掉、滑走即消（Lisa 三轮：不阻断操作）。
+ * 6.2 秒 = 1.6 秒动画 + 4.6 秒读一句话的时间。
+ * 原本是 4.2 秒 —— 实测太紧：动画刚落定就开始倒计时，一句 20 字的话读不完。
+ */
+const AUTO_CLOSE_MS = 6200
 
 interface Props {
-  shift: LightShift
+  payload: AhaPayload
   /** 触发时刻。定格帧移到"进门"之后，因果链需要一个日期锚（小艾三轮的必要条件） */
   stampedAt?: number
   onClose: () => void
+}
+
+/**
+ * 一屏定格，四种 kind 共用（v3.6.1）。
+ * light_shift 走完整的光河序列；其余三种（stage_up / awaken / intent_set）
+ * 是**纯事实句**，刻意不给动画 —— 它们的信息量在句子里，加动效只会变成表演。
+ * 「简约」在这里的具体含义：能用一句话说完的，不画第二样东西。
+ */
+export function LightShiftAha({ payload, stampedAt, onClose }: Props) {
+  if (payload.kind === 'light_shift') {
+    return <LightRiverFrame shift={payload.shift} stampedAt={stampedAt} onClose={onClose} />
+  }
+  return <FactFrame payload={payload} stampedAt={stampedAt} onClose={onClose} />
+}
+
+/** 事实型定格：一个色点 + 一句主句 + 若干补充行。零动画、零数字 */
+function FactFrame({ payload, stampedAt, onClose }: {
+  payload: Extract<AhaPayload, { kind: 'stage_up' | 'awaken' | 'intent_set' }>
+  stampedAt?: number
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5600)   // 事实型没有动画，纯读句子的时间
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey) }
+  }, [onClose])
+
+  const dateAnchor = stampedAt
+    ? new Date(stampedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+    : null
+
+  return (
+    <div className="aha-scrim" data-testid="aha-frame" onClick={onClose} role="dialog" aria-label="花园里的一件事">
+      <div className="aha-sheet-body" data-testid={`aha-${payload.kind}`} onClick={e => e.stopPropagation()}>
+        {dateAnchor && <p className="aha-anchor" data-testid="aha-anchor">{dateAnchor}那一笔之后</p>}
+        <span className="aha-dot" style={{ backgroundColor: payload.colorHex }} />
+        <p className="aha-fact" data-testid="aha-fact">{payload.headline}</p>
+        {payload.lines.map(l => (
+          <p key={l} className="aha-line">{l}</p>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /** 墨点色：源花瓣植物色加深一档。白底上「浓」才是光，「亮」等于消失 */
@@ -68,7 +118,11 @@ function inkOf(hex: string): string {
 
 interface Path { x0: number; y0: number; mx: number; my: number; x1: number; y1: number; color: string; delay: number }
 
-export function LightShiftAha({ shift, stampedAt, onClose }: Props) {
+function LightRiverFrame({ shift, stampedAt, onClose }: {
+  shift: LightShift
+  stampedAt?: number
+  onClose: () => void
+}) {
   const dimensions = useEnabledDimensions()
   const lawSeen = useStore(s => s.ahaLawSeen)
   const markAhaLawSeen = useStore(s => s.markAhaLawSeen)

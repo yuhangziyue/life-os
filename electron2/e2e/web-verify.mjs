@@ -280,6 +280,75 @@ try {
         truth.aboutMentionsSqlite ? '仍在承诺 SQLite 文件' : '')
   await page.shot(path.join(SHOTS, '我-存储真相.png'))
 
+  // Aha 展柜：演示版必须能把每一种 Aha 都演一遍（子曰 2026-08-31 的硬要求）。
+  // 🔴 它只在演示版出现 —— 正式版里「想看就能看」会毁掉稀有性，而稀有性是这套设计的根基。
+  const showcase = await page.eval(`
+    location.hash = '#/me'
+    await new Promise(r => setTimeout(r, 900))
+    const box = document.querySelector('[data-testid="aha-showcase"]')
+    if (!box) return { shown: false }
+    const rows = [...box.querySelectorAll('[data-testid="showcase-row"]')]
+    return {
+      shown: true,
+      kinds: rows.map(r => r.dataset.kind),
+      playable: box.querySelectorAll('[data-testid="showcase-play"]').length,
+      text: box.innerText,
+    }
+  `)
+  check('演示版有 Aha 展柜', showcase.shown === true)
+
+  // 底栏排版：印章与标签必须是**上下两行**。
+  // 曾经的 bug：单个 tab 的 flex-column 留在 max-width:860px 的媒体查询里，
+  // 宽屏下就横排成了「今今天」「花我的花园」「我我」。
+  const tabLayout = await page.eval(`
+    const tab = document.querySelector('[data-testid="mobile-tabbar"] a')
+    const seal = tab.querySelector('.mobile-tab-seal').getBoundingClientRect()
+    const label = tab.querySelector('.mobile-tab-label').getBoundingClientRect()
+    return { dir: getComputedStyle(tab).flexDirection, stacked: label.top >= seal.bottom - 1 }
+  `)
+  check('底栏印章与标签上下排（宽窄屏都是）',
+        tabLayout.dir === 'column' && tabLayout.stacked === true, JSON.stringify(tabLayout))
+  check('八种 Aha 全部在场（四种定格帧 + 四种回执文案）',
+        showcase.kinds?.length === 8, (showcase.kinds || []).join(' / '))
+  check('四种定格帧都能当场演一遍', showcase.playable === 4, `${showcase.playable} 个可播`)
+  check('展柜如实说明「真实使用时它们是稀有的」',
+        /稀有/.test(showcase.text || ''), '')
+
+  // 逐个播一遍，确认每一种都真的能出画面且不留痕
+  const played = await page.eval(`
+    const box = document.querySelector('[data-testid="aha-showcase"]')
+    const btns = [...box.querySelectorAll('[data-testid="showcase-play"]')]
+    const out = []
+    for (const b of btns) {
+      b.click()
+      await new Promise(r => setTimeout(r, 500))
+      const frame = document.querySelector('[data-testid="aha-frame"]')
+      out.push({
+        shown: !!frame,
+        fact: document.querySelector('[data-testid="aha-fact"]')?.innerText || '',
+      })
+      frame?.click()
+      await new Promise(r => setTimeout(r, 350))
+    }
+    return {
+      out,
+      pending: (await window.electronAPI.dbSettingsGet('ahaPending')) || '',
+      played: await window.electronAPI.dbEventsHas('aha_played'),
+    }
+  `)
+  check('四种定格帧逐个都能出画面',
+        played.out?.length === 4 && played.out.every(o => o.shown && o.fact.length > 0),
+        (played.out || []).map(o => o.fact.slice(0, 12)).join(' | '))
+  check('🔴 展柜零副作用：不写待播载荷、不占当天额度',
+        played.pending === '' && played.played === false,
+        `pending=${played.pending ? '有' : '空'} played=${played.played}`)
+  await page.shot(path.join(SHOTS, '演示版-Aha展柜.png'))
+
+  // 全部文案过红线：零评价词、零感叹号、不出现「连续」
+  const showcaseText = showcase.text || ''
+  check('展柜全文零禁词（恭喜/真棒/进步/坚持/加油/连续）',
+        !/恭喜|真棒|进步|坚持|加油|连续/.test(showcaseText) && !/[!！]/.test(showcaseText), '')
+
   const pwa = await page.eval(`
     const link = document.querySelector('link[rel="manifest"]')
     if (!link) return { linked: false }

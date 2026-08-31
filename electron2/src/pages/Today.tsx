@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore, useTodayActions, useEnabledDimensions } from '../stores/useStore'
 import { DailyGlance } from '../components/DailyGlance'
+import { LightBand } from '../components/LightBand'
 import { GardenTasks } from '../components/GardenTasks'
 import { ActionRow } from '../components/ActionRow'
 import { ReturnCard } from '../components/ReturnCard'
@@ -72,6 +73,18 @@ export function Today() {
 
         {/* 断记 5 天以上回来时才出现。它不催你记，只告诉你账本没变 */}
         <ReturnCard />
+
+        {/*
+          回执层的落点（v3.6.1 补漏）。
+          🔴 这是上一轮的漏项：圆桌定的三层反馈里，第一层是「每次记录后，光带里那段做
+             240ms 饱和度脉冲 + 一粒墨点落下」。但光带此前只在「我的花园」，
+             而默认落地页是这里 —— 于是从最常用的那一页记一笔，第一层反馈在屏幕上**没有承载体**。
+          它同时兼一个常驻职责：今天的光已经分出去多少。零数字、零 title，
+          一眼是一条光的分布带，不用读数（小露的老红线）。
+        */}
+        <div className="card py-3">
+          <LightBand dimensions={dimensions} actions={actions} label="这周的光" />
+        </div>
 
         {/* ① 推荐我做的 */}
         <DailyGlance />
