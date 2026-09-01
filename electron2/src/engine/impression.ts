@@ -42,7 +42,7 @@ export function composeFirstImpression(
 
   // 均匀：不夸奖。均匀往往意味着还没做过真正的选择（Lisa 的教练视角）
   if (spread < FLAT_SPREAD) {
-    return ['八瓣的长短很接近。可能你确实照顾得很平均，也可能——你还没决定要先照顾谁。']
+    return ['花瓣的长短很接近。可能你确实照顾得很平均，也可能——你还没决定要先照顾谁。']
   }
 
   const lines: string[] = []
@@ -91,9 +91,25 @@ export function lightShares(
   const weights = new Map<string, number>()
   let total = 0
 
+  /**
+   * 🔴 分母必须只算**在册花瓣**的行（v3.7 修，小艾实测发现）。
+   *
+   * 原来 `total` 对窗口内所有已完成记录累加，不问这条记录的花瓣还在不在
+   * 传进来的 `dimensions` 里；而输出只 map 传进来的那几片。
+   * 而首页传的是 `useEnabledDimensions()`（只含在册的）——
+   * 于是**一片花瓣被「休息」之后，它过去拿的光留在分母里，却没有对应的行**，
+   * 剩下几片的百分数集体缩水。实测：在册两片显示 30% 与 20%，之和只有 50%。
+   *
+   * 用户看到的是「我把光让给了别人」，而真相是分母里躺着一片已经下架的花瓣。
+   * 占比的语义就此定死：**占比永远是「在册花瓣之间的分配」。**
+   * 连带口径：跨过一次维度变更的两段窗口，占比不做纵向比较（调用方要如实说明）。
+   */
+  const inRoster = new Set(dimensions.map(d => d.id))
+
   for (const a of actions) {
     if (!a.isCompleted) continue
     if (a.date < since || a.date > until) continue
+    if (!inRoster.has(a.dimensionId)) continue
     weights.set(a.dimensionId, (weights.get(a.dimensionId) ?? 0) + a.impact)
     total += a.impact
   }

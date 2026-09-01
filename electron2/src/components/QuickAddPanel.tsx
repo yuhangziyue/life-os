@@ -25,6 +25,7 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
   const actions = useStore(s => s.actions)
   const addAction = useStore(s => s.addAction)
   const quickAddPreset = useStore(s => s.quickAddPreset)
+  const quickAddText = useStore(s => s.quickAddText)
 
   const [dimensionId, setDimensionId] = useState('')
   const [branchId, setBranchId] = useState('')
@@ -76,13 +77,30 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
     return new Date(ts).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   }
 
-  // 「再记一条」带过来的预选维度
+  /**
+   * 「再记一条」与**花园轻推**带过来的预选（v3.7 改）。
+   *
+   * 轻推那一路为什么走这里、而不是自己落库：
+   *   原来轻推卡上是一个「完成」按钮，点一下就以 `impact: 2` 落库。
+   *   小艾第六轮实读发现这条路径**能把代价一键抹掉**——② 分支专挑**沉睡**的花瓣派任务，
+   *   而点一下就写入一条今天的记录 ⇒ `daysSinceLast` 归零 ⇒ 那片花瓣当天脱离沉睡、
+   *   分数上涨、在花里张开。他的原话：
+   *   **「一次点击，可以把『这片花瓣我三周没管了』这个事实从画面上抹掉。」**
+   *   而「代价可见」是这产品的全部立论。
+   *
+   *   所以按钮改成「记一笔」：轻推降级为**入口**，它自己一行代码都不产光，
+   *   重量、质地、要不要真记，全部由用户在这张面板上定。
+   *   连带好处是 A2 那场争论整个消解——既然轻推不产出光，就没有任何东西值得庆祝，
+   *   那个「居中带遮罩的弹窗」失去了动机。
+   */
   useEffect(() => {
     if (open && quickAddPreset) {
       setDimensionId(quickAddPreset)
       setBranchOpen(false)
     }
-  }, [open, quickAddPreset])
+    // 文案只预填，不锁定 —— 用户改一个字、或整句删掉重写，都是正常路径
+    if (open && quickAddText) setDescription(quickAddText)
+  }, [open, quickAddPreset, quickAddText])
 
   /**
    * 维度排序（v3.3 T7，报告 §4.2.1）：

@@ -426,7 +426,7 @@ export function buildDemoSnapshot(now: number): WebSnapshot {
     return d.getTime()
   }
   ;[
-    { back: 1, score: 5.9, note: '这个月最大的收获不是某件事做成了，是终于愿意每天记一笔。看得见，才改得动。', summary: '记录 48 条 · 八片花瓣全有记录' },
+    { back: 1, score: 5.9, note: '这个月最大的收获不是某件事做成了，是终于愿意每天记一笔。看得见，才改得动。', summary: '记录 48 条 · 每一片花瓣都有记录' },
     { back: 2, score: 5.2, note: '刚开始用，前两周三天打鱼。后半个月才有点样子。', summary: '记录 31 条 · 覆盖 7 片花瓣' },
   ].forEach((m, i) => {
     const start = monthStart(m.back)

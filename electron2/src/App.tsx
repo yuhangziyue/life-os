@@ -15,6 +15,7 @@ import { Onboarding } from './components/Onboarding'
 import { QuarterlyTalk } from './components/QuarterlyTalk'
 import { Garden } from './pages/Garden'
 import { Today } from './pages/Today'
+import { History } from './pages/History'
 import { Dimensions } from './pages/Dimensions'
 import { DimensionDetail } from './pages/DimensionDetail'
 import { Actions } from './pages/Actions'
@@ -170,6 +171,7 @@ export default function App() {
                   我 → 花语(/handbook)
                 /settings 与 /me 是同一页 —— 菜单桥与既有 e2e 都还指着 /settings。 */}
             <Route path="/" element={<Today />} />
+            <Route path="/history" element={<History />} />
             <Route path="/garden" element={<Garden />} />
             <Route path="/me" element={<Settings />} />
             <Route path="/dimensions" element={<Dimensions />} />

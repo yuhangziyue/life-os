@@ -134,8 +134,11 @@ await phase('阶段 1：启动与首屏', async () => {
     const bar = document.querySelector('[data-testid="mobile-tabbar"]')
     return bar ? [...bar.querySelectorAll('a')].map(a => a.dataset.tab) : []
   `)
-  check('底栏三个入口（今天 / 我的花园 / 我）',
-        tabs.length === 3 && tabs.join('|') === '今天|我的花园|我', tabs.join(' / '))
+  // v3.7 C1：第三个 tab 从「我」改名「设置」。这里断言的是**名字本身**，
+  //   因为「我」和「设置」是两种不同的承诺 ——「我」许的是身份，「设置」许的是开关。
+  //   子曰选了后者，那这一屏就不该再摆身份宣言当第一块。
+  check('底栏三个入口（今天 / 我的花园 / 设置）',
+        tabs.length === 3 && tabs.join('|') === '今天|我的花园|设置', tabs.join(' / '))
   // v3.6：默认落地页是「今天」（子曰口径：第一个 tab 是今天）
   check('首屏落在「今天」', boot.text.includes('我今天做的'), boot.text.slice(0, 40).replace(/\n/g, '/'))
   check('诊断脚手架已从界面移除', !boot.diagLeft)
@@ -231,8 +234,15 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
   }`)
   check('「我的花园」上有细看数据与周对账两个二级出口', drawers.stats && drawers.review, JSON.stringify(drawers))
   await goto('#/')
-  check('「今天」上有全部记录出口',
-        await p.eval(`return !!document.querySelector('[data-testid="link-actions"]')`))
+  // v3.7 A3：底部那条 /actions 抽屉链接已删，出口改到「最近的记录」卡右上角的「更多 ›」。
+  //   理由是子曰的原话「卡片右上角点击更多来打开新页面」—— 出口要贴着它所属的那块内容，
+  //   而不是沉在整屏最底下（沉在最底下的出口等于没有）。
+  const historyExit = await p.eval(`return {
+    more: !!document.querySelector('[data-testid="recent-more"]'),
+    oldDrawer: !!document.querySelector('[data-testid="link-actions"]'),
+  }`)
+  check('「今天」上有全部记录出口，且在「最近的记录」卡上而不是屏底抽屉',
+        historyExit.more && !historyExit.oldDrawer, JSON.stringify(historyExit))
   await goto('#/me')
   check('「我」上有花语出口',
         await p.eval(`return !!document.querySelector('[data-testid="link-handbook"]')`))
@@ -723,26 +733,77 @@ await phase('阶段 10.3：花园任务（目标提醒 + 一键完成 + 回响�
   check('看板出现「来自花园的轻声提醒」且包含目标任务', card.shown && card.hasGoalTask, JSON.stringify(card))
   await p.shot(`${SHOTS}/16-garden-tasks.png`)
 
-  // 一键完成 → 落库为行动 + 回响出现
+  /**
+   * v3.7：「完成」按钮已删，改为「记一笔」——**轻推自己不产光**。
+   *
+   * 这条断言比旧版强，因为它守的是一条会杀死产品立论的路径：
+   * 任务生成的 ② 分支专挑**沉睡**的花瓣派任务，旧的「完成」点一下就以 impact:2 落库，
+   * 于是那片花瓣当天脱离沉睡、分数上涨、在花里张开 ——
+   * **一次点击可以把「这片花瓣我三周没管了」这个事实从画面上抹掉。**
+   * 现在点它只打开面板、预选花瓣、预填那句话，重量由用户定。
+   */
   const beforeActions = await p.eval(`return (await window.electronAPI.dbActionsGetAll()).length`)
-  await p.eval(`
-    // 找「含目标名 + 含完成按钮」的最内层行容器，避免点到外层包裹里别的任务的按钮
+
+  // 卡上不许再出现「完成」按钮与绿色判定色的「已完成 ✓」
+  const noDoneBtn = await p.eval(`
     const cardEl = document.querySelector('[data-testid="garden-tasks"]')
-    const rows = [...cardEl.querySelectorAll('div')]
-      .filter(d => d.innerText.includes('操作测试目标') && [...d.querySelectorAll('button')].some(b => b.innerText.trim() === '完成'))
-      .sort((a, b) => a.innerText.length - b.innerText.length)
-    const btn = [...rows[0].querySelectorAll('button')].find(b => b.innerText.trim() === '完成')
-    btn.click(); return 1
+    return {
+      hasDone: [...cardEl.querySelectorAll('button')].some(b => b.innerText.trim() === '完成'),
+      hasRecord: [...cardEl.querySelectorAll('button')].some(b => b.innerText.trim() === '记一笔'),
+      hasDoneMark: document.body.innerText.includes('已完成 ✓'),
+    }
+  `)
+  check('轻推卡上没有「完成」按钮，只有「记一笔」',
+        !noDoneBtn.hasDone && noDoneBtn.hasRecord && !noDoneBtn.hasDoneMark, JSON.stringify(noDoneBtn))
+
+  // 点「记一笔」→ 面板打开，且**花瓣已预选、那句话已预填**
+  const opened = await p.eval(`
+    const cardEl = document.querySelector('[data-testid="garden-tasks"]')
+    const rows = [...cardEl.querySelectorAll('[data-testid="garden-task-row"]')]
+      .filter(d => d.innerText.includes('操作测试目标'))
+    if (!rows.length) return { found: false }
+    const btn = [...rows[0].querySelectorAll('button')].find(b => b.innerText.trim() === '记一笔')
+    if (!btn) return { found: false }
+    const taskText = rows[0].querySelector('span')?.innerText || ''
+    btn.click()
+    await new Promise(r => setTimeout(r, 700))
+    const input = document.querySelector('input[placeholder^="做了什么"]')
+    return {
+      found: true,
+      panelOpen: !!input,
+      prefilled: (input?.value || '').length > 0,
+      // 预选生效的判据：面板里那片花瓣的按钮处于选中态（aria-pressed / 选中类名皆可，取其一）
+      dimPicked: !!document.querySelector('[data-testid="qa-branch-toggle"]'),
+    }
+  `)
+  check('点「记一笔」打开面板且预填了那句话',
+        opened.found && opened.panelOpen && opened.prefilled, JSON.stringify(opened))
+  check('预选了这片花瓣（二度分支行已出现，说明维度已定）', opened.dimPicked, JSON.stringify(opened))
+
+  // 此刻还没有落库 —— 轻推自己不产光，这一条是整个改动的核心
+  const midActions = await p.eval(`return (await window.electronAPI.dbActionsGetAll()).length`)
+  check('点「记一笔」本身不落库（轻推不产光）', midActions === beforeActions,
+        `${beforeActions} → ${midActions}`)
+
+  // 由用户在面板上定重量并提交 → 才落库，且走的是和自发记录完全同一套回执
+  await p.eval(`
+    ${HELPERS}
+    const q = window.__t.byText('button', '日常记录')
+    if (q) q.click()
+    await new Promise(r => setTimeout(r, 200))
+    const b = [...document.querySelectorAll('button')].find(x => x.innerText.includes('⌘↵'))
+    if (b && !b.disabled) b.click()
+    return 1
   `)
   await sleep(2200)
   const done = await p.eval(`return {
     actions: (await window.electronAPI.dbActionsGetAll()).length,
     echoShown: !!document.querySelector('[data-testid="echo-toast"]'),
     echoText: document.querySelector('[data-testid="echo-toast"]')?.innerText.slice(0, 100) || '',
-    doneMark: document.body.innerText.includes('已完成 ✓'),
   }`)
-  check('任务一键完成落库为行动', done.actions === beforeActions + 1, `${beforeActions} → ${done.actions}`)
-  check('完成任务触发回响且提及目标', done.echoShown && done.echoText.includes('操作测试目标'),
+  check('用户在面板上提交后才落库', done.actions === beforeActions + 1, `${beforeActions} → ${done.actions}`)
+  check('走的是和自发记录同一套回执（回响出现且提及目标）',
+        done.echoShown && done.echoText.includes('操作测试目标'),
         done.echoText.replace(/\n/g, ' / ').slice(0, 80))
 
   // 清理：删测试目标 + 测试行动
@@ -1824,8 +1885,14 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
   check('板块② 时间汇总三个数（陪伴天数 / 记过的天 / 一共几笔）',
         garden.cells === 3, `${garden.cells} 个：${(garden.keys || []).join(' / ')}`)
   check('有记录的天数算得出来', garden.recorded >= 1, `${garden.recorded} 天`)
-  check('板块③ 有「八片花瓣 ⇄ 周月对比」切换', garden.switcher === true)
-  check('八片花瓣逐片在场（沉睡的排后但不隐藏）', garden.petals === 8, `${garden.petals} 行`)
+  // v3.7 B4：子曰原话「第四个卡片只要周月对比数据，花瓣数据不要了」。
+  //   所以切换器与花瓣清单一起删 —— 断言反过来守：它们**不许再出现**。
+  //   ⚠️ 红线 1「沉睡花瓣绝不隐藏」并没有因此被破：那份逐片清单搬去了「花园年鉴」的
+  //   「每一片花瓣」子页（书香判它要独占一扇门 —— 一个要承担「绝不隐藏」的清单，
+  //   不能是第七块里往下滚出来的东西）。这里只是它不再占花园首屏的位置。
+  check('板块③ 只剩周月对比，花瓣清单与切换器都已移走',
+        garden.switcher === false && garden.petals === 0,
+        `switcher=${garden.switcher} / petalRows=${garden.petals}`)
 
   // 数字纪律：日常光带上不许出现占比数字，也不许挂 title 泄漏
   const bandLeak = await p.eval(`
@@ -1836,8 +1903,9 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
         bandLeak.withTitle === 0, `${bandLeak.withTitle}/${bandLeak.count} 段带 title`)
 
   // 周月对比：不许出现箭头与「进步」
-  await p.eval(`document.querySelector('[data-view="compare"]').click(); return 1`)
-  await sleep(500)
+  // v3.7 B4：这里原来要先点一下 `[data-view="compare"]` 切过去。切换器已随花瓣清单一起删，
+  //   周月对比成了这张卡的常态 —— 所以不再需要那次点击（保留它会点到 null）。
+  await sleep(300)
   const cmp = await p.eval(`
     const el = document.querySelector('[data-testid="period-compare"]')
     return { shown: !!el, text: el?.innerText || '', modes: el?.querySelectorAll('[data-mode]').length || 0 }
@@ -1849,20 +1917,30 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
   await p.shot(`${SHOTS}/24-garden.png`)
 
   // ---- M7 花瓣即导航 ----
-  await p.eval(`document.querySelector('[data-view="petals"]').click(); return 1`)
-  await sleep(400)
+  // v3.7 B4：原来这里先点 `[data-view="petals"]` 把卡切回花瓣视图。切换器已删，
+  //   而花瓣热区本来就长在**花**上（板块②，B2 判维持现状），跟那张卡无关，所以直接测。
+  await sleep(300)
   const petals = await p.eval(`
     const hits = [...document.querySelectorAll('[data-testid="petal-hit"]')]
     const health = hits.find(b => b.dataset.dimension === '身心健康')
     if (health) health.click()
-    return { count: hits.length, clicked: !!health }
+    return {
+      count: hits.length,
+      clicked: !!health,
+      // v3.7：热区数必须等于**在册花瓣数**，不许写死 8。
+      //   子曰这一版的原话是「并不一定所有人都有 8 个花瓣」——
+      //   e2e 自己写死 8，就会在瓣数可变之后变成一道拦住正确实现的门。
+      enabled: (await window.electronAPI.dbDimensionsGetAll()).filter(d => d.is_enabled !== 0).length,
+    }
   `)
   await sleep(500)
   const sheet = await p.eval(`
     const el = document.querySelector('[data-testid="dimension-sheet"]')
     return el ? { shown: true, text: el.innerText.slice(0, 40) } : { shown: false }
   `)
-  check('八片花瓣都是可点热区', petals.count === 8, `${petals.count} 个热区`)
+  check('每片在册花瓣都是可点热区（数目跟着在册瓣数走，不写死 8）',
+        petals.count === petals.enabled && petals.count > 0,
+        `${petals.count} 个热区 / ${petals.enabled} 片在册`)
   check('点花瓣弹出该维度面板', sheet.shown && sheet.text.includes('身心健康'),
         (sheet.text || '').replace(/\n/g, '/'))
   await p.eval(`document.querySelector('[data-testid="dimension-sheet"]')?.click(); return 1`)

@@ -19,15 +19,21 @@ export type PeriodWord = '这一周' | '这一个月' | '这一季'
 
 export interface ShapeLine {
   /** 命中的形状 key，e2e 与埋点用 */
-  kind: 'single' | 'twoOfEight' | 'even' | 'untouched' | 'shifted' | 'steady' | 'thin'
+  // 🔴 'twoOfEight' 已改名 'fewTakeMost'：枚举名里写死数字，下次改文案必然有人漏掉它
+  //   （书香第六轮：「枚举名写死数字，是给未来的自己埋的坑」）
+  kind: 'single' | 'fewTakeMost' | 'even' | 'untouched' | 'shifted' | 'steady' | 'thin'
   text: string
 }
 
 /**
- * 八片总数。占比向量长度可能小于 8（lightShares 会滤掉零权重的），
- * 所以「有几片没被点到」必须拿总数减，不能靠数组长度。
+ * ⚠️ 这里原来是 `const PETALS = 8`，那是一个**会让产品对用户说假话**的 bug
+ *   （书香第六轮实读发现）：`untouched = 8 - shares.length`，
+ *   于是**只有五片花瓣的用户即使五片全点亮，界面也会说「有 3 片这一周还没被点到」**——
+ *   一句关于他自己那朵花的假话。
+ *
+ * 花瓣数是用户的数据（可以「让它休息」、可以新种），不是产品的常量。
+ * 所以总数必须由调用方按当前在册花瓣传入。
  */
-const PETALS = 8
 
 /**
  * 一句形状概括。命中优先级从「最有信息量」到「最兜底」，只出一句。
@@ -40,13 +46,15 @@ export function shapeSummary(
   shares: LightShare[],
   period: PeriodWord,
   prevTop?: string | null,
+  /** 当前在册花瓣数（enabled）。缺省时退回 shares.length ⇒ untouched 恒为 0，那一支不会误报 */
+  petalCount?: number,
 ): ShapeLine | null {
   if (shares.length === 0) return null
 
   const top = shares[0]
   const second = shares[1]
   const third = shares[2]
-  const untouched = PETALS - shares.length
+  const untouched = Math.max(0, (petalCount ?? shares.length) - shares.length)
 
   // 只有一两条记录时不谈形状 —— 样本太薄，说什么都是过度解读
   const totalWeight = shares.reduce((s, x) => s + x.weight, 0)
@@ -59,16 +67,17 @@ export function shapeSummary(
   }
 
   if (second && top.share + second.share >= 0.6 && (!third || third.share <= 0.1)) {
-    return { kind: 'twoOfEight', text: '六片让给了两片。' }
+    return { kind: 'fewTakeMost', text: '其余的花瓣，都让给了这两片。' }
   }
 
   if (untouched >= 3) {
     return { kind: 'untouched', text: `有 ${untouched} 片${period}还没被点到。` }
   }
 
-  // 八片都在场且都不突出：这是「均匀」，而均匀不是成就（Lisa 的原始口径）
-  if (shares.length >= 7 && top.share <= 0.2) {
-    return { kind: 'even', text: '八片都在动，没有哪一片在开。' }
+  // 每一片都在场且都不突出：这是「均匀」，而均匀不是成就（Lisa 的原始口径）
+  // 阈值也不能写死 7 —— 五瓣用户永远到不了 7，这一支对他等于不存在
+  if (shares.length >= Math.max(3, (petalCount ?? shares.length) - 1) && top.share <= 0.2) {
+    return { kind: 'even', text: '每一片都在动，没有哪一片在开。' }
   }
 
   if (prevTop && prevTop !== top.name) {

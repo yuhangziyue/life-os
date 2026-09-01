@@ -377,7 +377,8 @@ try {
   `)
   check('手机尺寸下出底栏三入口 + FAB',
         mobile.barVisible && mobile.fabVisible &&
-        mobile.tabs.join('|') === '今天|我的花园|我', mobile.tabs.join(' / '))
+        // v3.7 C1：第三个 tab 从「我」改名「设置」
+        mobile.tabs.join('|') === '今天|我的花园|设置', mobile.tabs.join(' / '))
   check('侧栏已删（v3.6：手机端是唯一形态）且页面不横向溢出',
         mobile.noAside && mobile.noSideScroll, JSON.stringify(mobile))
 

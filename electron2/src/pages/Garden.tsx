@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   useStore, useOverallScore, useCoveredCount, useEnabledDimensions,
@@ -12,7 +12,7 @@ import { MonthlyCheckin } from '../components/MonthlyCheckin'
 import { PostcardCard } from '../components/PostcardCard'
 import { QuarterlyInvite } from '../components/QuarterlyInvite'
 import { DimensionSheet } from '../components/DimensionSheet'
-import { scoreStage, dimensionVitality, dimensionStage } from '../engine/scoring'
+import { scoreStage, dimensionVitality } from '../engine/scoring'
 import { lightShares } from '../engine/impression'
 import { shapeSummary } from '../engine/shape'
 import { maybeSnapshotFlower } from '../services/snapshot'
@@ -41,8 +41,6 @@ export function Garden() {
   const companionDays = useCompanionDays()
   const recordedDays = useRecordedDays()
 
-  const [tab, setTab] = useState<'petals' | 'compare'>('petals')
-
   const flowerCardRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (dimensions.length === 0) return
@@ -59,26 +57,11 @@ export function Garden() {
   // 一句小概括：形状，不是分数。样本太薄时它会自己说「账还薄，先攒着」
   const shape = useMemo(() => {
     const shares = lightShares(dimensions, actions, Date.now() - 7 * DAY_MS)
-    return shapeSummary(shares, '这一周')
+    // 第四参必须传 —— 不传则「有几片没被点到」那一支永远算成 0（见 shape.ts 顶部注释）
+    return shapeSummary(shares, '这一周', null, dimensions.length)
   }, [dimensions, actions])
 
   const totalRecords = actions.filter(a => a.isCompleted).length
-
-  // 逐片花瓣：按占比降序，沉睡的排最后但绝不隐藏
-  const petals = useMemo(() => {
-    const shares = new Map(
-      lightShares(dimensions, actions, Date.now() - 7 * DAY_MS).map(s => [s.dimensionId, s.share]),
-    )
-    return dimensions
-      .map(d => {
-        const v = dimensionVitality(d, actions)
-        return { d, v, share: shares.get(d.id) ?? 0 }
-      })
-      .sort((a, b) => {
-        if (a.v.dormant !== b.v.dormant) return a.v.dormant ? 1 : -1
-        return b.share - a.share
-      })
-  }, [dimensions, actions])
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -114,7 +97,7 @@ export function Garden() {
 
         {/* ② 时间汇总。三个数都不可能归零 —— 这是它们能被显示出来的前提 */}
         <div className="card space-y-3" data-testid="time-summary">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)]">时间</h2>
+          <h2 className="text-sm font-medium text-[var(--text-secondary)]">陪你走过的时间</h2>
           <div className="metric-row">
             <div className="metric-cell" data-testid="companion-days">
               <div className="metric-value">{companionDays}</div>
@@ -134,43 +117,9 @@ export function Garden() {
           </p>
         </div>
 
-        {/* ③ 逐片花瓣 ⇄ 周月对比 */}
-        <div className="seg-wrap">
-          <div className="seg" data-testid="garden-view-switch">
-            <button
-              className={`seg-btn${tab === 'petals' ? ' is-on' : ''}`}
-              data-view="petals"
-              onClick={() => setTab('petals')}
-            >八片花瓣</button>
-            <button
-              className={`seg-btn${tab === 'compare' ? ' is-on' : ''}`}
-              data-view="compare"
-              onClick={() => setTab('compare')}
-            >周月对比</button>
-          </div>
-        </div>
-
-        {tab === 'petals' ? (
-          <div className="card space-y-1" data-testid="petal-list">
-            {petals.map(({ d, v, share }) => (
-              <button
-                key={d.id}
-                className="petal-row"
-                data-testid="petal-row"
-                data-dimension={d.name}
-                data-dormant={v.dormant ? '1' : '0'}
-                onClick={() => useStore.getState().openDimensionSheet(d.id)}
-              >
-                <span className="dot-sm" style={{ backgroundColor: d.colorHex }} />
-                <span className="petal-row-name">{d.name}</span>
-                <span className="petal-row-stage">{dimensionStage(d, actions, d.currentScore)}</span>
-                <span className="petal-row-share">{Math.round(share * 100)}%</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <PeriodCompare dimensions={dimensions} actions={actions} />
-        )}
+        {/* ③ 周月对比（v3.7 B4：花瓣逐片列表撤掉 —— 逐片入口已经在花上，
+            点那片花瓣就能看它的近况，再列一遍是重复） */}
+        <PeriodCompare dimensions={dimensions} actions={actions} />
 
         {/* 结算区：到期才出现，不到期不占位 */}
         <PostcardCard flowerHost={flowerCardRef} />

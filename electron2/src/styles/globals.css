@@ -1232,16 +1232,26 @@ html:not([data-cursor='off']) textarea {
    于是宽屏下印章与标签横排成了「今今天」「花我的花园」「我我」。 */
 .mobile-tab {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; padding: 0.55rem 0 0.5rem; color: var(--text-muted);
+  gap: 2px; padding: 0.55rem 0 0.5rem;
+  /* 未选中态用 --text-secondary 不用 --text-muted：
+     后者在花间集粉底上只有约 2.1:1，1.6px 的描边图标会糊成灰影（小露实测） */
+  color: var(--text-secondary);
   position: relative; min-height: 56px;
 }
+/* v3.7：印章单字换成 SVG。选中态是圆角方块底 + 反色图标，
+   所以图标必须用 currentColor —— 底色一变，线与填充跟着变，不必备两套图 */
 .mobile-tab-seal {
-  width: 28px; height: 28px; display: grid; place-items: center;
-  border-radius: 6px; font-size: 1.05rem;
-  font-family: 'Songti SC', 'STSong', serif; line-height: 1;
+  /* 30×30 / 圆角 9px（小露定稿）：22px 图标塞进 28px 只剩 3px 余量，
+     选中态那个色块会把图标顶到边；6px 圆角在这产品里太硬，9px 才读得出「圆角方块」 */
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: 9px; line-height: 1;
+  transition: background 0.2s, color 0.2s;
 }
-.mobile-tab-label { font-size: 0.65rem; letter-spacing: 0.1em; }
-.mobile-tab.is-on { color: var(--accent); }
+.mobile-tab-seal svg { display: block; }
+.mobile-tab-label { font-size: 0.7rem; letter-spacing: 0.08em; }
+/* 选中态：珊瑚**只给印章色块**，标签回到 --text-primary。
+   两者同时上 accent 等于一个 tab 两个重音，而 11px 的珊瑚字在粉底上也不达标 */
+.mobile-tab.is-on { color: var(--text-primary); }
 .mobile-tab.is-on .mobile-tab-seal { background: var(--accent); color: var(--accent-contrast); }
 .mobile-tab-bud { position: absolute; top: 4px; right: 22%; font-size: 9px; opacity: 0.75; }
 
@@ -1252,7 +1262,11 @@ html:not([data-cursor='off']) textarea {
   bottom: calc(72px + env(safe-area-inset-bottom));
   width: 56px; height: 56px; border-radius: 50%;
   background: var(--accent); color: var(--accent-contrast);
-  font-size: 0.7rem; line-height: 1.25; letter-spacing: 0.04em;
+  /* 文案从「记一笔」收成一个「记」：圆里放得开，也不必折行（v3.7 D1）。
+     字号必须跟着提到 1.35rem —— 原来的 0.7rem 是给四个字折行用的，
+     单字缩在 56px 圆里会像个错误（小露实测口径） */
+  font-size: 1.35rem; line-height: 1; letter-spacing: 0;
+  font-family: 'Songti SC', 'STSong', serif;
   place-items: center; border: none;
   box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.28);
 }

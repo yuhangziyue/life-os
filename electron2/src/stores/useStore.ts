@@ -129,6 +129,8 @@ interface AppState {
   quickAddOpen: boolean
   /** 「再记一条」预选的维度 id（v3.3 T6）；'' = 不预选 */
   quickAddPreset: string
+  /** 轻推带过来的那句话（v3.7）。只做预填，用户可改可清 —— 重量由他定，不由花园定 */
+  quickAddText: string
   selectedDate: number
 
   theme: ThemeId
@@ -176,7 +178,7 @@ interface AppState {
   toggleSidebar: () => void
   setQuickAddOpen: (open: boolean) => void
   /** 打开面板并预选维度：补记场景（周末批量补、晚上回顾今天）的入口 */
-  openQuickAddWith: (dimensionId: string) => void
+  openQuickAddWith: (dimensionId: string, text?: string) => void
   setSelectedDate: (date: number) => void
   setTheme: (theme: ThemeId) => void
   clearEcho: () => void
@@ -244,6 +246,7 @@ export const useStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   quickAddOpen: false,
   quickAddPreset: '',
+  quickAddText: '',
   selectedDate: startOfToday(),
   theme: loadTheme(),
   echo: null,
@@ -344,8 +347,14 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setQuickAddOpen: (open) => set({ quickAddOpen: open, quickAddPreset: open ? get().quickAddPreset : '' }),
-  openQuickAddWith: (dimensionId) => set({ quickAddOpen: true, quickAddPreset: dimensionId }),
+  setQuickAddOpen: (open) =>
+    set({
+      quickAddOpen: open,
+      quickAddPreset: open ? get().quickAddPreset : '',
+      quickAddText: open ? get().quickAddText : '',
+    }),
+  openQuickAddWith: (dimensionId, text) =>
+    set({ quickAddOpen: true, quickAddPreset: dimensionId, quickAddText: text ?? '' }),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setTheme: (theme) => set({ theme }),
   clearEcho: () => set({ echo: null, receiptLine: null }),

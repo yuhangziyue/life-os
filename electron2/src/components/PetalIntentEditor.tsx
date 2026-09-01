@@ -45,7 +45,7 @@ export function PetalIntentEditor() {
   return (
     <div className="card space-y-3" data-testid="petal-intent">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-medium text-[var(--text-secondary)]">八片花瓣</h2>
+        <h2 className="text-sm font-medium text-[var(--text-secondary)]">每一片花瓣</h2>
         <span className="text-[11px] text-[var(--text-muted)]">
           {withTarget === 0 && withPact === 0
             ? '还没有写过想要开到哪'

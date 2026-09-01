@@ -12,7 +12,12 @@ import { startOfToday } from '../engine/scoring'
 import { isEarly, isNight } from '../engine/ahaGate'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-/** 「最近的记录」往回看多少天。再往前请走「全部记录」——这一屏是今天，不是档案馆 */
+/**
+ * 「最近的记录」在这一屏**最多只露三条**（v3.7 A3）。
+ * 原来挂 14 天，越用越长 —— 而这一屏的职责是**今天**，不是档案馆。
+ * 全部历史走右上角「更多」→ /history，那一页按天分组。
+ */
+const RECENT_MAX = 3
 const RECENT_DAYS = 14
 
 /**
@@ -39,6 +44,7 @@ export function Today() {
     const rows = actions
       .filter(a => a.date < today && a.date >= from)
       .sort((a, b) => b.date - a.date)
+      .slice(0, RECENT_MAX)
     const groups: { date: number; rows: typeof rows }[] = []
     for (const a of rows) {
       const g = groups.find(x => x.date === a.date)
@@ -136,7 +142,16 @@ export function Today() {
         {/* ③ 最近的记录 */}
         {recent.length > 0 && (
           <div className="card space-y-3" data-testid="recent-actions">
-            <h2 className="text-sm font-medium text-[var(--text-secondary)]">最近的记录</h2>
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-medium text-[var(--text-secondary)]">最近的记录</h2>
+              <Link
+                to="/history"
+                className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                data-testid="recent-more"
+              >
+                更多 ›
+              </Link>
+            </div>
             {recent.map(g => (
               <div key={g.date}>
                 <p className="text-[11px] text-[var(--text-muted)] tracking-wide mb-1">{dayLabel(g.date)}</p>
@@ -148,10 +163,6 @@ export function Today() {
           </div>
         )}
 
-        <Link to="/actions" className="drawer-link" data-testid="link-actions">
-          <span>全部记录</span>
-          <span className="drawer-hint">按维度筛选 · 完整历史 ›</span>
-        </Link>
       </div>
     </div>
   )

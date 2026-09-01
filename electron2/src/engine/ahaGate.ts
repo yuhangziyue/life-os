@@ -28,7 +28,8 @@
 //   · 同 kind 冷却：形态 14 天 / 时刻 30 天 —— 抗习惯化是这条的全部目的（小艾）
 //   · 每天上限 1 条，每周上限 3 条
 //   · 样本地板：近 7 天 total impact ≥ 20 且参与分光 ≥ 4 片。
-//     未达标只放行 first_ever 与 stage_up —— **前期分母太小，名次每天都在换，
+//     未达标只放行 first_ever / stage_up / awaken / week_light（这四类不看名次）
+//     —— **前期分母太小，名次每天都在换，
 //     那是分母噪声不是真事件，早期就播会把发现层的可信度一次性烧掉**（小艾）
 //   · 静音（深夜 / 当日有 tired·vexed 心情）**不落任何事件行** ⇒ 不消耗冷却
 //     （小艾要求这条必须在代码里写死一套，否则半年后没人记得那行算不算"播过了"）
@@ -49,7 +50,7 @@ export type AhaKind =
 const MOMENT_KINDS = new Set<AhaKind>([
   'daily_first', 'night_owl', 'early_bird', 'intent_set', 'return_after_break',
 ])
-/** 样本地板未达标时仍然放行的两类（它们不依赖占比统计） */
+/** 样本地板未达标时仍然放行的四类（它们不看名次，所以与占比样本无关） */
 const FLOOR_EXEMPT = new Set<AhaKind>(['first_ever', 'stage_up', 'awaken', 'week_light'])
 
 export const FORM_COOLDOWN_DAYS = 14
@@ -58,7 +59,15 @@ export const DAILY_CAP = 1
 export const WEEKLY_CAP = 3
 /** 样本地板：近 7 天的 impact 总量与参与分光的花瓣数 */
 export const FLOOR_IMPACT = 20
+/**
+ * 参与分光的花瓣数下限。
+ * 🔴 必须是**相对值**（v3.7 修，小艾实测发现）：写成绝对 4 的话，
+ * 一个只留 3 片花瓣的用户 `shares.length` 最大就是 3 ⇒ 地板恒为 false ⇒
+ * 除豁免的那几类外全被挡掉，**连「今天第一笔」都永远拿不到**。
+ * 8 片⇒4 · 5 片⇒4 · 4 片⇒3 · 3 片⇒2，向后完全兼容。
+ */
 export const FLOOR_PETALS = 4
+export const floorPetalsFor = (dimCount: number) => Math.max(2, Math.min(FLOOR_PETALS, dimCount - 1))
 
 export const EV_PLAYED = 'aha_played'
 export const EV_KIND_PREFIX = 'aha_kind:'
@@ -99,7 +108,7 @@ export function isRoughDay(actions: Action[], now = Date.now()): boolean {
 /** 样本地板：账太薄的时候，名次变化只是分母噪声 */
 export function hasSampleFloor(dimensions: Dimension[], actions: Action[], now = Date.now()): boolean {
   const shares = lightShares(dimensions, actions, now - 7 * DAY_MS, now)
-  if (shares.length < FLOOR_PETALS) return false
+  if (shares.length < floorPetalsFor(dimensions.length)) return false
   const total = shares.reduce((s, x) => s + x.weight, 0)
   return total >= FLOOR_IMPACT
 }
@@ -127,7 +136,12 @@ export async function checkAhaGate(
   const now = opts.now ?? Date.now()
 
   if (opts.backfill && MOMENT_KINDS.has(kind)) return { pass: false, reason: 'backfill_moment' }
-  if (opts.floorOk === false && !FLOOR_EXEMPT.has(kind)) return { pass: false, reason: 'sample_floor' }
+  // 样本地板只管**形态类**：时刻类压根不依赖占比统计
+  //（night_owl 只看几点、daily_first 只看今天有没有记过），
+  // 拿占比样本去挡它们是判据错配（v3.7 修，与 C7 无关，本来就该这样）
+  if (opts.floorOk === false && !FLOOR_EXEMPT.has(kind) && !MOMENT_KINDS.has(kind)) {
+    return { pass: false, reason: 'sample_floor' }
+  }
 
   const cooldownDays = MOMENT_KINDS.has(kind) ? MOMENT_COOLDOWN_DAYS : FORM_COOLDOWN_DAYS
   if (await deps.hasSince(`${EV_KIND_PREFIX}${kind}`, now - cooldownDays * DAY_MS)) {
