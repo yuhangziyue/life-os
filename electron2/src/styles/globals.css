@@ -1020,6 +1020,49 @@ html:not([data-cursor='off']) textarea {
 @keyframes sheetUp { from { transform: translateY(14%); opacity: 0.4; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sheet-body { animation: none; } }
 
+/* sheet 里的一行可选项（v3.7 C2 主题上拉菜单）。
+   44px 是触控下限，不是审美选择 —— 上拉菜单是用拇指点的。 */
+.sheet-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 100%; min-height: 44px; padding: 0.6rem 0.75rem;
+  border: none; background: transparent; border-radius: 12px;
+  color: var(--text-primary); transition: background 0.16s;
+}
+.sheet-row:hover { background: var(--bg-hover); }
+.sheet-row.is-on { background: var(--bg-secondary); }
+.sheet-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 设置页主列表的一行（v3.7 C 组）。
+   与 .drawer-link 的分工：drawer-link 是**跨区跳转**（虚线框，像一扇门），
+   settings-row 是**同一屏内的条目**（实线分隔，像一份清单）。
+   两者混用会让"这是同一页的一项"和"这会把我带走"分不清。 */
+.settings-group { display: flex; flex-direction: column; }
+.settings-group-head {
+  font-size: 0.7rem; color: var(--text-muted); letter-spacing: 0.06em;
+  padding: 0 0.25rem 0.4rem;
+}
+.settings-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 100%; min-height: 48px; padding: 0.7rem 0.25rem;
+  border: none; background: transparent; text-align: left;
+  color: var(--text-primary); transition: background 0.16s;
+  border-bottom: 1px solid var(--border);
+}
+.settings-group .settings-row:last-child { border-bottom: none; }
+.settings-row:hover { background: var(--bg-hover); }
+.settings-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.settings-row-main { flex: 1; min-width: 0; }
+.settings-row-name { font-size: 0.875rem; }
+.settings-row-sub {
+  display: block; font-size: 0.72rem; color: var(--text-muted);
+  line-height: 1.5; margin-top: 0.1rem;
+}
+.settings-row-value {
+  font-size: 0.8rem; color: var(--text-secondary); flex-shrink: 0;
+  display: flex; align-items: center; gap: 0.35rem;
+}
+.settings-row-chev { color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0; }
+
 /* 宽屏下 sheet 居中成对话框：桌面上从屏幕底部升起是移动端语法，别硬搬 */
 @media (min-width: 861px) {
   .sheet-scrim { align-items: center; }
@@ -1609,3 +1652,33 @@ html:not([data-cursor='off']) textarea {
 }
 .guess-compare b { font-weight: 500; color: var(--text-primary); }
 .guess-sep { color: var(--text-muted); }
+
+/* ---------- 一周的光（v3.7 B1）---------- */
+/* 七列等宽等高。**列高恒定**是这张图的立论所在：
+   高度一随量走它就是柱状图，多就是好；恒定之后一列只回答"这天的光怎么分的"。 */
+.week-cols {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem; align-items: end;
+}
+.week-col { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.week-bar {
+  width: 100%; max-width: 34px; border-radius: 5px; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: var(--bg-secondary);
+}
+.week-bar > span { display: block; width: 100%; }
+/* 空白日：1px 描边、无填充。它是"这天我没记"，不是"这天待填" */
+.week-bar.is-empty { background: transparent; border: 1px solid var(--border); }
+/* 未来的日子：**只有一条底线，没有容器**。有容器就是待填 */
+.week-bar.is-future {
+  background: transparent; border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.week-day { font-size: 0.68rem; color: var(--text-muted); line-height: 1; }
+.week-date {
+  font-size: 0.62rem; color: var(--text-muted); opacity: 0.7; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* 🔴 刻意没有 .week-col.is-today 这类规则 ——
+   一旦"今天"被标出来，视线就跟着它往右走，那才是进度条的阅读方向。 */

@@ -199,9 +199,20 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
     ['#/me', '这座花园', '02c-me'],
     ['#/dimensions', '维度管理', '03-dimensions'],
     ['#/actions', '全部记录', '04-actions'],
-    ['#/stats', '细看数据', '05-stats'],
-    ['#/review', '周对账', '06-review'],
-    ['#/settings', '偏好与设置', '07-settings'],
+    // v3.7 改名：细看数据→花园年鉴（B8）· 周对账→我的复盘（B6）
+    ['#/stats', '花园年鉴', '05-stats'],
+    ['#/review', '我的复盘', '06-review'],
+    ['#/settings', '设置', '07-settings'],
+    // v3.7 B6：复盘拆成三层 —— 入口页 / 当期页 / 历史独立入口
+    ['#/review/week', '这一周', '06b-review-week'],
+    ['#/review/month', '这个月', '06c-review-month'],
+    ['#/review/year', '这一年', '06d-review-year'],
+    ['#/review/history', '历史回顾', '06e-review-history'],
+    // v3.7 C 组：设置页五个子页
+    ['#/settings/ambience', '氛围', '07b-ambience'],
+    ['#/settings/backup', '备份与导出', '07c-backup'],
+    ['#/settings/about', '关于', '07d-about'],
+    ['#/settings/petals', '花瓣', '07e-petals'],
   ]) {
     await goto(hash)
     // 读 main 而不是 body：侧栏文案（现在也含「今天」）会让「走错页照样匹配上」，
@@ -227,12 +238,12 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
   const h = await p.eval(`return location.hash`)
   check('底栏真实点击可跳转', nav.found && h.includes('/garden'), `→ ${h}`)
 
-  // 二级页出口：我的花园 → 细看数据 / 周对账，今天 → 全部记录，我 → 花语
+  // 二级页出口：我的花园 → 花园年鉴 / 我的复盘，今天 → 全部记录，设置 → 关于 → 花语
   const drawers = await p.eval(`return {
     stats: !!document.querySelector('[data-testid="link-stats"]'),
     review: !!document.querySelector('[data-testid="link-review"]'),
   }`)
-  check('「我的花园」上有细看数据与周对账两个二级出口', drawers.stats && drawers.review, JSON.stringify(drawers))
+  check('「我的花园」上有花园年鉴与我的复盘两个二级出口', drawers.stats && drawers.review, JSON.stringify(drawers))
   await goto('#/')
   // v3.7 A3：底部那条 /actions 抽屉链接已删，出口改到「最近的记录」卡右上角的「更多 ›」。
   //   理由是子曰的原话「卡片右上角点击更多来打开新页面」—— 出口要贴着它所属的那块内容，
@@ -243,9 +254,26 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
   }`)
   check('「今天」上有全部记录出口，且在「最近的记录」卡上而不是屏底抽屉',
         historyExit.more && !historyExit.oldDrawer, JSON.stringify(historyExit))
+  // v3.7 C6：花语从设置页顶层降到「关于」子页里的一行入口。
+  //   书香第四轮自驳了她第一轮的反对，理由是**前提已变**：
+  //   手册五章已按拆散方案各归其位（八瓣章进单片设置页、花的语言进花下图例），
+  //   **留在「关于」里那一份是全文存档，不是入园读物。存档放三层深是对的。**
   await goto('#/me')
-  check('「我」上有花语出口',
-        await p.eval(`return !!document.querySelector('[data-testid="link-handbook"]')`))
+  const handbookMoved = await p.eval(`return {
+    onSettings: !!document.querySelector('[data-testid="link-handbook"]'),
+    aboutRow: !!document.querySelector('[data-testid="row-about"]'),
+  }`)
+  check('设置页顶层不再有花语，改为「关于」一行',
+        !handbookMoved.onSettings && handbookMoved.aboutRow, JSON.stringify(handbookMoved))
+  await goto('#/settings/about')
+  check('花语在「关于」子页里，且只占一行入口（不铺开五章长文）',
+        await p.eval(`
+          const link = document.querySelector('[data-testid="link-handbook"]')
+          const promises = document.querySelector('[data-testid="about-promises"]')
+          // 承诺必须排在花语之前 —— 陌生人装完第一个疑虑是「我的数据去哪了」
+          return !!link && !!promises
+            && promises.compareDocumentPosition(link) === Node.DOCUMENT_POSITION_FOLLOWING
+        `))
 })
 
 // ======================================================================
@@ -470,13 +498,39 @@ await phase('阶段 8：统计 / 回顾 / 设置', async () => {
   check('统计分析页渲染（含日/周/月/年切换）', stats.root > 0 && stats.tabs.length >= 3,
         `tabs=${JSON.stringify(stats.tabs)} canvas=${stats.canvas}`)
 
+  // v3.7 B6：/review 已是**入口页**（三行链接 + 历史入口，刻意没有输入框），
+  //   写字的地方在当期页 /review/week
   await goto('#/review')
-  const review = await p.eval(`return { root: document.getElementById('root').children.length, ta: document.querySelectorAll('textarea').length }`)
-  check('回顾反思页渲染（含反思输入框）', review.root > 0 && review.ta > 0, `textarea=${review.ta}`)
+  const hub = await p.eval(`return { root: document.getElementById('root').children.length, links: document.querySelectorAll('[data-testid^="review-link-"]').length }`)
+  check('复盘入口页渲染（三个入口，无输入框）', hub.root > 0 && hub.links === 3, `links=${hub.links}`)
 
+  await goto('#/review/week')
+  const review = await p.eval(`return { root: document.getElementById('root').children.length, ta: document.querySelectorAll('textarea').length }`)
+  check('当期复盘页渲染（含「我的思考」输入框）', review.root > 0 && review.ta > 0, `textarea=${review.ta}`)
+
+  // v3.7 C3：导出搬进 /settings/backup 子页；设置页主列表刻意只有清单
   await goto('#/settings')
-  const st = await p.eval(`return { root: document.getElementById('root').children.length, inputs: document.querySelectorAll('input').length, hasExport: document.body.innerText.includes('导出') }`)
-  check('设置页渲染（AI 配置 + 数据导出）', st.root > 0 && st.inputs > 0 && st.hasExport, `input=${st.inputs}`)
+  const st = await p.eval(`return {
+    root: document.getElementById('root').children.length,
+    rows: document.querySelectorAll('.settings-row').length,
+    hasExport: document.body.innerText.includes('导出'),
+  }`)
+  check('设置页渲染为一份清单（导出已进子页，主列表不摊开）',
+        st.root > 0 && st.rows >= 4, `rows=${st.rows}`)
+  await goto('#/settings/backup')
+  const bk = await p.eval(`return {
+    root: document.getElementById('root').children.length,
+    hasExport: document.body.innerText.includes('导出'),
+    json: !!document.querySelector('[data-testid="export-json"]'),
+    // 🔴 存储真相必须跟着搬过来，不能被简化掉（v3.4 A3）——
+    //   界面简化不能把「数据会丢」一起简化掉
+    clear: !!document.querySelector('[data-testid="clear-all"]'),
+    // 页名不叫「数据管理」：「管理」是禁用词，而用户到这儿是**为了把东西拿走**
+    banned: /管理/.test(document.querySelector('main')?.innerText || ''),
+  }`)
+  check('备份子页有导出 JSON / CSV / 导入 / 清除', bk.root > 0 && bk.hasExport && bk.json && bk.clear,
+        JSON.stringify(bk))
+  check('🔴 备份页不出现「管理」（用户到这儿是为了把东西拿走，不是来治理它）', !bk.banned)
   await p.shot(`${SHOTS}/13-settings.png`)
 })
 
@@ -532,8 +586,33 @@ await phase('阶段 9：原生菜单端到端（主进程真实触发）', async
 })
 
 // ======================================================================
-await phase('阶段 9.5：回顾反思读写闭环', async () => {
+await phase('阶段 9.5：复盘读写闭环（v3.7 B6 拆入口后）', async () => {
+  /**
+   * v3.7 B6：复盘从「一页三 tab」拆成「入口页 + 三个当期页 + 历史独立入口」。
+   * 所以切周期不再是点 tab，是走路由 —— 这也顺带消掉了原来那个真 bug 的土壤
+   * （在 tab 的 onClick 里 setReflection，读到的是切换「之前」那个 tab 的 existingReview）。
+   *
+   * ⚠️ 我给圆桌的底稿说「月与年都不存在，B6 是新建两层」，Lisa 实读代码纠正：
+   *   三 tab、三池问题、历史回顾**全都早已实现**，B6 是**拆入口**。
+   *   风险位置也随之改变：不在"要设计什么问题"，在"已写好的问题里哪几句是刀"。
+   */
+  // 入口页先验：三个入口 + 历史独立入口
   await goto('#/review')
+  const hub = await p.eval(`return {
+    week: !!document.querySelector('[data-testid="review-link-week"]'),
+    month: !!document.querySelector('[data-testid="review-link-month"]'),
+    year: !!document.querySelector('[data-testid="review-link-year"]'),
+    history: !!document.querySelector('[data-testid="link-review-history"]'),
+    // 🔴 年入口不许带任何「新」标记或圆点 ——
+    //   年回顾对新用户是空的，任何标记都会诱导他去点开一个只会告诉他「还没有」的地方。
+    //   **产品不能引导用户去看自己的空。**
+    yearBadge: /新|●|·\d/.test(document.querySelector('[data-testid="review-link-year"]')?.innerText || ''),
+  }`)
+  check('复盘入口页有周/月/年三个入口 + 历史独立入口',
+        hub.week && hub.month && hub.year && hub.history, JSON.stringify(hub))
+  check('🔴 年入口不带「新」标记或圆点（不引导用户去看自己的空）', !hub.yearBadge)
+
+  await goto('#/review/week')
   const TEXT = '操作测试：本周把 Life-OS 跑通了'
 
   await p.eval(`
@@ -542,7 +621,8 @@ await phase('阶段 9.5：回顾反思读写闭环', async () => {
     return 1
   `)
   await sleep(300)
-  await p.eval(`${HELPERS}; window.__t.byText('button','保存反思')?.click() || window.__t.byText('button','更新反思')?.click(); return 1`)
+  // v3.7 B7：按钮文案统一成「保存」，不带宾语（三个尺度一致）
+  await p.eval(`document.querySelector('[data-testid="review-save"]').click(); return 1`)
   await sleep(2000)
 
   const saved = await p.eval(`
@@ -550,22 +630,22 @@ await phase('阶段 9.5：回顾反思读写闭环', async () => {
     const r = rs.find(x => x.periodType === 'week')
     return { count: rs.length, note: r?.note, summary: (r?.autoSummary||'').slice(0,20) }
   `)
-  check('反思保存落库（note + 自动摘要）',
+  check('思考保存落库（note + 摘要句）',
         saved.note === TEXT && saved.summary.length > 0, JSON.stringify(saved))
 
   const stillShown = await p.eval(`return document.querySelector('textarea').value`)
   check('保存后输入框保留内容（不被清空）', stillShown === TEXT, `框内="${stillShown}"`)
 
-  // 切到月回顾：应显示月周期的内容（此处为空），而不是周回顾那段
-  await p.eval(`${HELPERS}; window.__t.byText('button','月回顾').click(); return 1`)
-  await sleep(800)
-  const monthVal = await p.eval(`return document.querySelector('textarea').value`)
-  check('切换周期不串内容（月回顾不显示周回顾的文字）', monthVal === '', `月回顾框内="${monthVal}"`)
+  // 切到月：应显示月周期的内容（此处为空），而不是周那段
+  await goto('#/review/month')
+  await sleep(600)
+  const monthVal = await p.eval(`return document.querySelector('textarea')?.value ?? '(无框)'`)
+  check('切换周期不串内容（月不显示周的文字）', monthVal === '' || monthVal === '(无框)', `月框内="${monthVal}"`)
 
-  await p.eval(`${HELPERS}; window.__t.byText('button','周回顾').click(); return 1`)
-  await sleep(800)
+  await goto('#/review/week')
+  await sleep(600)
   const backVal = await p.eval(`return document.querySelector('textarea').value`)
-  check('切回周回顾恢复已存内容', backVal === TEXT, `框内="${backVal}"`)
+  check('切回周恢复已存内容', backVal === TEXT, `框内="${backVal}"`)
 
   // 清空并保存：内容应真的被清掉，而不是弹回旧值
   await p.eval(`${HELPERS}; window.__t.type(document.querySelector('textarea'), ''); return 1`)
@@ -573,13 +653,13 @@ await phase('阶段 9.5：回顾反思读写闭环', async () => {
   const clearedInUI = await p.eval(`return document.querySelector('textarea').value`)
   check('输入框可以被清空（旧值不回弹）', clearedInUI === '', `框内="${clearedInUI}"`)
 
-  await p.eval(`${HELPERS}; window.__t.byText('button','更新反思')?.click(); return 1`)
+  await p.eval(`document.querySelector('[data-testid="review-save"]').click(); return 1`)
   await sleep(2000)
   const clearedInDB = await p.eval(`
     const rs = await window.electronAPI.dbReviewsGetAll()
     return { note: rs.find(x => x.periodType === 'week')?.note }
   `)
-  check('清空后的反思能存回数据库', clearedInDB.note === '', JSON.stringify(clearedInDB))
+  check('清空后的思考能存回数据库', clearedInDB.note === '', JSON.stringify(clearedInDB))
   await p.shot(`${SHOTS}/14-review.png`)
 })
 
@@ -608,7 +688,11 @@ await phase('阶段 10：删除行动（顺带清掉测试数据）', async () =
 
 // ======================================================================
 await phase('阶段 10.1：回顾删除（deleteReview 全链路）', async () => {
-  await goto('#/review')
+  // v3.7 B6：历史回顾拆成了独立页。
+  //   它此前是当期页最底下的一张卡，那个位置有个具体的坏处：
+  //   用户每次写完这一周的思考，往下一滚就看见自己过去十条 ——
+  //   **每一次复盘都自动附赠一次自我审阅**。拆出去之后，翻旧账是他主动的选择。
+  await goto('#/review/history')
   const before = await p.eval(`return (await window.electronAPI.dbReviewsGetAll()).length`)
   if (before === 0) { bad('回顾删除前置', '库里没有可删的回顾（阶段9.5 应已创建）'); return }
 
@@ -822,9 +906,26 @@ await phase('阶段 10.4：主题切换（花间集 ↔ 暗夜花园 ↔ 禅意�
   await goto('#/garden')   // v3.6：花形在「我的花园」
   const initialTheme = await p.eval(`return localStorage.getItem('lifeos:theme') || 'night'`)
 
+  // v3.7 C2：主题从三张大卡改成**行内上拉菜单** ——
+  //   主题是一次性选择（一年动一两次），不该常驻一屏三分之一。
   await goto('#/settings')
-  await p.eval(`${HELPERS}; window.__t.byText('button', '禅意茶室').click(); return 1`)
+  const sheetOpened = await p.eval(`
+    document.querySelector('[data-testid="row-theme"]').click()
+    await new Promise(r => setTimeout(r, 400))
+    return {
+      sheet: !!document.querySelector('[data-testid="theme-sheet"]'),
+      // 上拉菜单里仍保留色板预览：主题的差别是视觉差别，只给名字等于让用户靠猜
+      swatches: document.querySelectorAll('[data-testid="theme-opt-dawn"] span[style*="background"]').length,
+    }
+  `)
+  check('点「主题」那一行升起上拉菜单，且保留色板预览',
+        sheetOpened.sheet && sheetOpened.swatches >= 3, JSON.stringify(sheetOpened))
+  await p.eval(`document.querySelector('[data-testid="theme-opt-dawn"]').click(); return 1`)
   await sleep(800)
+  // 点选即生效即关闭，不做「确定/取消」——
+  //   给一次可逆、无代价的动作加确认，是把它说成一次决定
+  check('点选即生效并自动收起（无确定/取消）',
+        await p.eval(`return !document.querySelector('[data-testid="theme-sheet"]')`))
   const dawn = await p.eval(`return {
     dataset: document.documentElement.dataset.theme,
     stored: localStorage.getItem('lifeos:theme'),
@@ -848,9 +949,14 @@ await phase('阶段 10.4：主题切换（花间集 ↔ 暗夜花园 ↔ 禅意�
   check('禅意茶室下花形图正常绘制', dawnFlower.painted, `不透明像素=${dawnFlower.n}`)
   await p.shot(`${SHOTS}/18-dashboard-dawn.png`)
 
-  // 花间集（第三主题）也走一遍
+  // 花间集（第三主题）也走一遍。v3.7 C2：同样要先升起上拉菜单
   await goto('#/settings')
-  await p.eval(`${HELPERS}; window.__t.byText('button', '花间集').click(); return 1`)
+  await p.eval(`
+    document.querySelector('[data-testid="row-theme"]').click()
+    await new Promise(r => setTimeout(r, 400))
+    document.querySelector('[data-testid="theme-opt-bloom"]').click()
+    return 1
+  `)
   await sleep(600)
   const bloom = await p.eval(`return {
     dataset: document.documentElement.dataset.theme,
@@ -861,10 +967,15 @@ await phase('阶段 10.4：主题切换（花间集 ↔ 暗夜花园 ↔ 禅意�
   await goto('#/')
   await p.shot(`${SHOTS}/19-dashboard-bloom.png`)
 
-  // 切回原主题，不动用户的偏好
+  // 切回原主题，不动用户的偏好。v3.7 C2：走上拉菜单里的选项 id，
+  //   不再靠中文名找按钮（名字在菜单里，而菜单要先升起来）
   await goto('#/settings')
-  const backName = initialTheme === 'dawn' ? '禅意茶室' : initialTheme === 'bloom' ? '花间集' : '暗夜花园'
-  await p.eval(`${HELPERS}; window.__t.byText('button', ${JSON.stringify(backName)}).click(); return 1`)
+  await p.eval(`
+    document.querySelector('[data-testid="row-theme"]').click()
+    await new Promise(r => setTimeout(r, 400))
+    document.querySelector('[data-testid="theme-opt-' + ${JSON.stringify(initialTheme)} + '"]').click()
+    return 1
+  `)
   await sleep(400)
   const restored = await p.eval(`return document.documentElement.dataset.theme`)
   check('主题恢复为进场前的设置', restored === initialTheme, `恢复为 ${restored}`)
@@ -905,7 +1016,8 @@ await phase('阶段 10.6：主题化指针 + 氛围开关（v3.1 A1/A3）', asyn
 
   // 输入区必须保留系统 I-beam（晓雅 X4 红线）。
   // 探针别放设置页——AI 配置隐藏后那页只剩 checkbox，没有文本输入框可探。
-  await goto('#/review')
+  // v3.7 B6：/review 已改成入口页（只有三行链接），文本框在当期页里
+  await goto('#/review/week')
   const ibeam = await p.eval(`
     const ta = document.querySelector('textarea')
     return ta ? getComputedStyle(ta).cursor : 'no-input'
@@ -937,8 +1049,8 @@ await phase('阶段 10.6：主题化指针 + 氛围开关（v3.1 A1/A3）', asyn
         `theme=${trail.theme} profile=${trail.profile}`)
 
   // 关闭指针 → 回系统指针；关闭拖尾 → 画布卸载；再全部打开
-  // （开关在设置页——上面把 I-beam 探针挪到了回顾页，这里必须先回来）
-  await goto('#/settings')
+  // v3.7 C5：三个开关搬进 /settings/ambience 子页
+  await goto('#/settings/ambience')
   await p.eval(`${HELPERS}; document.querySelector('[data-testid="toggle-cursor"]').click(); return 1`)
   await sleep(400)
   const cursorOff = await p.eval(`return {
@@ -1271,12 +1383,12 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
   }`)
   check('跳过路径：一键先逛逛也算完成', !skipped.overlay && skipped.done === '1', JSON.stringify(skipped))
 
-  // —— 设置页可重看 ——
-  await goto('#/settings')
+  // —— 可重看（v3.7 C5：跟着氛围一起进子页）——
+  await goto('#/settings/ambience')
   await p.eval(`document.querySelector('[data-testid="replay-onboarding"]').click(); return 1`)
   await sleep(600)
   const replay = await p.eval(`return !!document.querySelector('[data-testid="onboarding"]')`)
-  check('设置页可重看引导', replay)
+  check('氛围页可重看引导', replay)
   await p.eval(`${HELPERS}; window.__t.byText('button', '先逛逛').click(); return 1`)
   await sleep(800)
 
@@ -1530,22 +1642,48 @@ await phase('阶段 10.12：账本通道（v3.3 T2/T3/T5）', async () => {
   await goto('#/')              // v3.6：今日一瞥在「今天」，也就是默认落地页
   await sleep(900)
 
-  // —— T3 今日账本一瞥：一天一条，三类之一，且绝不出现催办语气 ——
-  const glance = await p.eval(`
-    const el = document.querySelector('[data-testid="daily-glance"]')
-    return el ? { kind: el.dataset.glanceKind, text: el.innerText } : null
+  /**
+   * v3.7 A1：「今日一瞥」那张卡已删，那句观察降级为**光带的图注**。
+   *
+   * Lisa 第四轮否决了她自己上一轮的方案（给卡加四道闸门保留它），判据是：
+   *   **稀疏 + 有容器 = 奖励结构。** 加闸后卡大部分日子是空的，
+   *   藏起来则「卡片的出现本身成了信号」，容器的出现变成事件；不藏则永久多一块空占位。
+   * ⇒ 降级为图注，因为**注解没有容器，它空着的时候什么都不发生，没有位置在等话**。
+   *
+   * 所以这里的断言反过来守两件事：
+   *   ① 旧那张卡**不许再出现**
+   *   ② 图注若出现，必须挂在光带卡片内、无按钮、不提问、无催办语气
+   */
+  const oldCard = await p.eval(`return !!document.querySelector('[data-testid="daily-glance"]')`)
+  check('🔴 「今日一瞥」那张卡已拆掉（容器没了，不是内容没了）', !oldCard)
+
+  const caption = await p.eval(`
+    const el = document.querySelector('[data-testid="band-caption"]')
+    if (!el) return { rendered: false }
+    const band = el.closest('.card')
+    return {
+      rendered: true,
+      kind: el.dataset.kind,
+      text: el.innerText,
+      // 必须与光带同在一张卡里 —— 它是给那张图配的注解，不是另起一段讲话
+      insideBandCard: !!band && !!band.querySelector('[data-testid="light-band"]'),
+      buttons: el.querySelectorAll('button, a').length,
+    }
   `)
-  check('今日账本一瞥出现在「今天」屏顶', !!glance, glance ? `kind=${glance.kind}` : '未渲染')
-  if (glance) {
-    check('一瞥只出一条，且类型是 growth/allocation/companion 之一',
-          ['growth', 'allocation', 'companion'].includes(glance.kind), `kind=${glance.kind}`)
-    // 红线：不催办。不出现「浇一下 / 该 / 快 / 别忘 / 只完成了」这类词
-    check('一瞥无催办语气（不出现 浇一下/该去/别忘/落后）',
-          !/浇一下|该去|别忘|落后|快去|加油/.test(glance.text),
-          glance.text.slice(0, 60).replace(/\n/g, '/'))
-    check('一瞥不带动作按钮（不是软推送）',
-          await p.eval(`return document.querySelectorAll('[data-testid="daily-glance"] button, [data-testid="daily-glance"] a').length === 0`),
-          '按钮数应为 0')
+  if (caption.rendered) {
+    check('图注与光带共用同一张卡（是图注，不是新的一段话）', caption.insideBandCard, JSON.stringify(caption.insideBandCard))
+    check('图注类型收窄为 growth/companion（追问已搬去月度校准）',
+          ['growth', 'companion'].includes(caption.kind), `kind=${caption.kind}`)
+    check('🔴 图注不提问（图注是给图配注解，不是产品向你发问）',
+          !/[？?]/.test(caption.text), caption.text.slice(0, 60))
+    check('图注无催办语气（不出现 浇一下/该去/别忘/落后）',
+          !/浇一下|该去|别忘|落后|快去|加油/.test(caption.text),
+          caption.text.slice(0, 60).replace(/\n/g, '/'))
+    check('图注不带任何按钮（不是软推送）', caption.buttons === 0, `按钮数 ${caption.buttons}`)
+  } else {
+    // 不渲染也是合法状态（深夜 / 坏日子 / 样本地板不足 / 同句冷却）——
+    // 而且这正是「没有容器」的证明：那一行不在，卡片高度自然收缩
+    check('图注无句可说时整行不渲染（不是空行、不是占位）', true, '本次静音')
   }
 
   // —— T3 光带：近 7 天零记录时正确地不渲染（空账不摆空带子当摆设）——
@@ -1800,7 +1938,19 @@ await phase('阶段 10.13：记录手感 + 月度微校准（v3.3 T6-T10）', as
     return 1
   `)
   await reload()
-  await goto('#/garden')          // v3.6：结算区（月度微校准 / 季度邀请）在「我的花园」
+  /**
+   * v3.7 B5：子曰要「第五个卡片暂时不要了，隐藏」。裁决是**只藏两样，邀请不能藏**：
+   *   · 月度微校准 + 明信片 ⇒ 收进「我的复盘」（它们本来就是回顾物）
+   *   · 季度会谈邀请 ⇒ **留在「我的花园」**。书香的理由无法反驳：手册第四章已把
+   *     「到期不催、推迟两次缩成小花苞」**写成了承诺**，藏掉它是产品毁自己写下的字。
+   *   更硬的一条是实证：`bud`（底栏那枚小花苞）的触发条件是**连续推迟两次之后** ——
+   *   卡一藏，用户就永远不会去推迟，于是**花蕾永不出现，到期信号彻底消失**。
+   *
+   * 而那句追问「这是你想要的分法吗？」也只能落在这里 ——
+   * **追问只能出现在用户已经坐下来的地方**：月度校准是他主动点进去、有输入框、
+   * 有跳过路径的屏；「今天」屏他是来放东西的。同一句话在两处一个是提问，一个是拦路。
+   */
+  await goto('#/review/month')
   await sleep(1000)
   const due = await p.eval(`
     const el = document.querySelector('[data-testid="monthly-checkin"]')
@@ -1870,7 +2020,17 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
     const box = document.querySelector('[data-testid="time-summary"]')
     const cells = box ? [...box.querySelectorAll('.metric-cell')] : []
     return {
-      rings: !!document.querySelector('[data-testid="light-rings"]'),
+      weekRings: !!document.querySelector('[data-testid="week-rings"]'),
+      weekTitle: document.querySelector('[data-testid="week-rings-title"]')?.innerText || '',
+      weekCols: document.querySelectorAll('[data-testid="week-cols"] .week-col').length,
+      // 🔴 今天那一列不许被高亮/描边/加指针 —— 一旦标出来，视线就跟着它往右走，
+      //   那才是进度条的阅读方向。七列一律等价
+      todayMarked: !!document.querySelector('.week-col.is-today, .week-col[data-today="1"]'),
+      // 🔴 未来的日子只有一条 1px 底线，没有容器 —— 空槽就是"待填"，槽本身就是进度条语法
+      futureBoxed: [...document.querySelectorAll('.week-col[data-future="1"] .week-bar')]
+        .some(el => !el.classList.contains('is-future')),
+      // 🔴 列高恒定：高度一随量走它就是柱状图，多就是好
+      colHeights: [...new Set([...document.querySelectorAll('.week-bar')].map(el => el.style.height))],
       shape: document.querySelector('[data-testid="shape-summary"]')?.innerText || '',
       cells: cells.length,
       keys: cells.map(c => c.querySelector('.metric-key')?.innerText.trim()),
@@ -1879,7 +2039,25 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
       petals: document.querySelectorAll('[data-testid="petal-row"]').length,
     }
   `)
-  check('板块⓿ 光的年轮在场（九十天固定窗口）', garden.rings === true)
+  /**
+   * v3.7 B1：首屏第一块从「九十天年轮」换成「一周的光」——
+   * 子曰原话「默认按照一个周的维度…一天是一个竖着的长方形」。
+   * 九十天那张移到「花园年鉴」（两张图回答不同尺度的问题）。
+   *
+   * 窗口之争是第六轮最尖锐的一处：小露要滚动七天（"日历周每周一是 1/7 满，
+   * 那就是每周清零重来的进度条"），小艾要固定日历周（"滑窗永不归零，
+   * 会制造连续的错觉"）—— **同一个"进度条"理由，相反结论**。
+   * 小艾以「**页 vs 传送带：证据不能有保质期**」+ 改默认视图（周一停上一周，
+   * **归零由用户第一笔触发**）胜出，Lisa 第四轮投票接受并认下他抓到她一个双标。
+   */
+  check('板块⓿ 一周的光在场，七列', garden.weekRings === true && garden.weekCols === 7,
+        `cols=${garden.weekCols}`)
+  check('标题跟着所显示的那一页走（不写死「这一周」）',
+        /这一周的光|上一周的光|月.*日/.test(garden.weekTitle), garden.weekTitle)
+  check('🔴 今天那一列不高亮、不描边、不加指针（七列一律等价）', !garden.todayMarked)
+  check('🔴 未来的日子不画空槽，只有一条底线（槽本身就是进度条语法）', !garden.futureBoxed)
+  check('🔴 列高恒定，不随当天 impact 变化（高度一随量走就是柱状图）',
+        garden.colHeights.length === 1, `出现了 ${garden.colHeights.length} 种列高：${garden.colHeights.join(',')}`)
   check('板块① 一句小概括是形状不是分数',
         garden.shape.length > 0 && !/\d+(\.\d+)?\s*分/.test(garden.shape), garden.shape)
   check('板块② 时间汇总三个数（陪伴天数 / 记过的天 / 一共几笔）',
@@ -1946,73 +2124,125 @@ await phase('阶段 10.14：三入口 · 花瓣导航 · 八瓣约定 · 进门�
   await p.eval(`document.querySelector('[data-testid="dimension-sheet"]')?.click(); return 1`)
   await sleep(300)
 
-  // ---- 「我」页：八瓣的现在 / 想要开到哪 / 约定 ----
+  /**
+   * ---- 设置页：清单 + 五个子页（v3.7 C 组）----
+   *
+   * 上一版这一页是七张大卡摊在一屏里，手机窄屏要滚七八屏，
+   * 而其中每一项都是**一年动一两次**的东西。子曰的 C2–C7 方向一致：主界面简化。
+   */
   await goto('#/me')
   await sleep(700)
   const me = await p.eval(`return {
     identity: !!document.querySelector('[data-testid="identity-card"]'),
-    intent: !!document.querySelector('[data-testid="petal-intent"]'),
-    items: document.querySelectorAll('[data-testid="intent-item"]').length,
-    theme: !!document.querySelector('[data-testid="theme-section"]'),
-    about: !!document.querySelector('[data-testid="about-section"]'),
+    rowPetals: !!document.querySelector('[data-testid="link-petals"]'),
+    rowTheme: !!document.querySelector('[data-testid="row-theme"]'),
+    rowAmbience: !!document.querySelector('[data-testid="row-ambience"]'),
+    rowBackup: !!document.querySelector('[data-testid="row-backup"]'),
+    rowAbout: !!document.querySelector('[data-testid="row-about"]'),
+    // 旧那些整块摊开的卡片都不该再在这一页
+    oldIntent: !!document.querySelector('[data-testid="petal-intent"]'),
+    oldTheme: !!document.querySelector('[data-testid="theme-section"]'),
+    oldAmbience: !!document.querySelector('[data-testid="ambience-section"]'),
+    oldAbout: !!document.querySelector('[data-testid="about-section"]'),
+    // 🔴 这一页不许出现「管理」「系统」——都是禁用词
+    banned: /管理|系统/.test(document.querySelector('main')?.innerText || ''),
   }`)
-  check('「我」上有身份卡 / 八瓣编辑 / 主题 / 关于', me.identity && me.intent && me.theme && me.about,
+  check('设置页是一份清单：花瓣 / 主题 / 氛围 / 备份与导出 / 关于',
+        me.identity && me.rowPetals && me.rowTheme && me.rowAmbience && me.rowBackup && me.rowAbout,
         JSON.stringify(me))
-  check('八瓣逐片可展开', me.items === 8, `${me.items} 片`)
+  check('旧那四张摊开的大卡都已进子页（主界面真的简化了）',
+        !me.oldIntent && !me.oldTheme && !me.oldAmbience && !me.oldAbout, JSON.stringify(me))
+  check('🔴 设置页不出现「管理」「系统」（禁用词）', !me.banned)
 
-  // 目标分落库（v5 迁移）+ 调低时那句不是安慰而是分配
-  const target = await p.eval(`
-    ${HELPERS}
-    const item = [...document.querySelectorAll('[data-testid="intent-item"]')]
-      .find(el => el.dataset.dimension === '身心健康')
-    item.querySelector('.intent-head').click()
-    await new Promise(r => setTimeout(r, 300))
-    const slider = item.querySelector('[data-testid="target-slider"]')
-    // 🔴 必须设成与当前值不同的数：React 的值追踪器认为没变就不会触发 onChange，
-    //    而滑块默认值是 ceil(currentScore)。设 1 同时满足「有变化」与「低于现在分」。
-    window.__t.type(slider, '1')
-    await new Promise(r => setTimeout(r, 900))
+  /**
+   * ---- C7 三层：卡片 → 花瓣列表 → 单片页 ----
+   *
+   * 书香判的形态，理由**不是屏幕大小，是行为**：
+   *   24 个输入框同屏就是一张表，而**人对着表会横向找平** ——
+   *   那正是这产品最不要的动作（Lisa：「均匀」不是成就）。
+   *   一次只露一片，他只能纵向想「这一片我想给多少」，**找不着平可调**。
+   */
+  await goto('#/settings/petals')
+  await sleep(600)
+  const list = await p.eval(`return {
+    rows: document.querySelectorAll('[data-testid="petal-list-row"]').length,
+    enabled: (await window.electronAPI.dbDimensionsGetAll()).filter(d => d.is_enabled !== 0).length,
+    // 🔴 列表页不许有任何输入控件 —— 有输入就意味着可以同屏比较着调
+    inputs: document.querySelectorAll('[data-testid="petal-list"] input, [data-testid="petal-list"] textarea, [data-testid="petal-list"] select').length,
+    // 「现在」只给状态词，不给精确分数（一排数字就是一张可调平的表）
+    hasNumbers: /\d+\.\d/.test(document.querySelector('[data-testid="petal-list"]')?.innerText || ''),
+  }`)
+  check('花瓣列表逐片在场，数目跟着在册瓣数走', list.rows === list.enabled && list.rows > 0,
+        `${list.rows} 行 / ${list.enabled} 片在册`)
+  check('🔴 列表页零输入控件（同屏可调 = 会横向找平）', list.inputs === 0, `${list.inputs} 个输入`)
+  check('🔴 列表上不出现精确分数，只给状态词', !list.hasNumbers)
+
+  // 进第三层：单片页。**「这片花瓣照看什么」必须排在所有输入之前**
+  const healthId = await p.eval(`
     const dims = await window.electronAPI.dbDimensionsGetAll()
-    const d = dims.find(x => x.name === '身心健康')
-    return { saved: d.targetScore, lower: !!item.querySelector('[data-testid="target-lower"]'),
-             lowerText: item.querySelector('[data-testid="target-lower"]')?.innerText || '' }
+    return dims.find(d => d.name === '身心健康').id
   `)
-  check('目标分落库（迁移 v5 的 targetScore）', target.saved === 1, `targetScore=${target.saved}`)
-  check('目标低于现在时给的是「分配」不是安慰',
-        target.lower && /分配/.test(target.lowerText) && !/不是放弃|别灰心|没关系/.test(target.lowerText),
-        target.lowerText)
+  await goto(`#/settings/petals/${healthId}`)
+  await sleep(600)
+  const single = await p.eval(`return {
+    about: !!document.querySelector('[data-testid="petal-about"]'),
+    aboutText: document.querySelector('[data-testid="petal-about"]')?.innerText || '',
+    now: !!document.querySelector('[data-testid="petal-now"]'),
+    target: !!document.querySelector('[data-testid="petal-target"]'),
+    pact: !!document.querySelector('[data-testid="petal-pact"]'),
+    save: !!document.querySelector('[data-testid="petal-save"]'),
+    skip: !!document.querySelector('[data-testid="petal-skip"]'),
+    // 🔴 这一页刻意不显示任何别的花瓣（连"其余 N 片的进度"这种脚注也不给）
+    otherPetals: document.querySelectorAll('[data-testid="petal-list-row"]').length,
+    // 「照看什么」在「想要开到哪」之前 —— 这是列表+第三层这个形态的独家红利
+    aboutFirst: (() => {
+      const a = document.querySelector('[data-testid="petal-about"]')
+      const t = document.querySelector('[data-testid="petal-target"]')
+      return !!a && !!t && a.compareDocumentPosition(t) === Node.DOCUMENT_POSITION_FOLLOWING
+    })(),
+  }`)
+  check('单片页四块齐全：照看什么 / 现在 / 想要开到哪 / 一句约定',
+        single.about && single.now && single.target && single.pact, JSON.stringify(single))
+  check('🔴 「这片花瓣照看什么」排在所有输入之前（填之前先读到它照看什么）', single.aboutFirst)
+  check('🔴 单片页不显示任何别的花瓣（一次只面对一片）', single.otherPetals === 0)
+  check('有「保存并返回」也有「这一片先不设」（留空是回答，不是未完成）',
+        single.save && single.skip)
+  check('照看什么那段取自手册第三章（C6 拆散后的落点）',
+        single.aboutText.includes('身体') || single.aboutText.includes('照看'),
+        single.aboutText.slice(0, 50).replace(/\n/g, '/'))
 
-  // 约定三件套落库（v6 迁移），且不含任何完成态
-  const pact = await p.eval(`
+  // 目标分 + 约定三件套落库（v5/v6 迁移），且这一页保存一次写完
+  const saved = await p.eval(`
     ${HELPERS}
-    const item = [...document.querySelectorAll('[data-testid="intent-item"]')]
-      .find(el => el.dataset.dimension === '身心健康')
-    window.__t.select(item.querySelector('[data-testid="pact-timing"]'), '周三')
-    await new Promise(r => setTimeout(r, 600))
-    const anchor = item.querySelector('[data-testid="pact-anchor"]')
-    window.__t.type(anchor, '吃完晚饭')
-    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
-    await new Promise(r => setTimeout(r, 700))
-    const txt = item.querySelector('[data-testid="pact-text"]')
-    window.__t.type(txt, '走二十分钟')
-    txt.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
-    await new Promise(r => setTimeout(r, 900))
+    // 🔴 必须设成与当前值不同的数：React 的值追踪器认为没变就不会触发 onChange
+    window.__t.type(document.querySelector('[data-testid="petal-target-range"]'), '1')
+    await new Promise(r => setTimeout(r, 300))
+    window.__t.byText('button', '周三').click()
+    await new Promise(r => setTimeout(r, 200))
+    window.__t.type(document.querySelector('[data-testid="petal-pact-anchor"]'), '吃完晚饭')
+    window.__t.type(document.querySelector('[data-testid="petal-pact-text"]'), '走二十分钟')
+    await new Promise(r => setTimeout(r, 300))
+    const bodyText = document.querySelector('main').innerText
+    document.querySelector('[data-testid="petal-save"]').click()
+    await new Promise(r => setTimeout(r, 1600))
     const dims = await window.electronAPI.dbDimensionsGetAll()
     const d = dims.find(x => x.name === '身心健康')
     return {
-      timing: d.pactTiming, anchor: d.pactAnchor, text: d.pactText,
-      preview: item.querySelector('[data-testid="pact-preview"]')?.innerText || '',
-      bodyText: document.querySelector('[data-testid="petal-intent"]').innerText,
+      target: d.targetScore, timing: d.pactTiming, anchor: d.pactAnchor, text: d.pactText,
+      bodyText,
+      // 保存后应回到列表页
+      backOnList: location.hash.endsWith('/settings/petals'),
     }
   `)
+  check('目标分落库（迁移 v5 的 targetScore）', saved.target === 1, `targetScore=${saved.target}`)
   check('约定三件套落库（迁移 v6）',
-        pact.timing === '周三' && pact.anchor === '吃完晚饭' && pact.text === '走二十分钟',
-        JSON.stringify(pact).slice(0, 100))
-  check('约定预览是执行意图句式（时机 + 锚点 + 那件事）',
-        /每个周三，吃完晚饭之后，我去走二十分钟。/.test(pact.preview), pact.preview.slice(0, 60))
-  check('🔴 约定面上没有完成态 / 进度 / 完成率（一有裁判它就变任务）',
-        !/完成率|已完成|未完成|\d+\/\d+|进度/.test(pact.bodyText))
-  await p.shot(`${SHOTS}/25-me-intent.png`)
+        saved.timing === '周三' && saved.anchor === '吃完晚饭' && saved.text === '走二十分钟',
+        JSON.stringify({ t: saved.timing, a: saved.anchor, x: saved.text }))
+  check('「保存并返回」真的返回列表（保存边界与"一次只想一片"对齐）', saved.backOnList,
+        `hash=${saved.backOnList}`)
+  check('🔴 单片页上没有完成态 / 进度 / 完成率（一有裁判它就变任务）',
+        !/完成率|已完成|未完成|\d+\/\d+|进度/.test(saved.bodyText))
+  await p.shot(`${SHOTS}/25-petal-edit.png`)
 
   // 约定的上下文内自我提示：只在记录面板里选中这片花瓣时出现
   await goto('#/')
@@ -2161,7 +2391,20 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
               frame.inks >= 1 && frame.inks <= 3, `${frame.inks} 粒`)
         check('主句动词是「分」，不出现「挪」「让」',
               /分/.test(frame.fact) && !/挪|让/.test(frame.fact), frame.fact)
-        check('🔴 全屏恰好一个占比数字', frame.pctCount === 1, `${frame.pctCount} 个：${frame.num}`)
+        /**
+         * 🔴 数字纪律：**全屏最多一个占比数字**。
+         *
+         * 原来写的是 `=== 1`，那是把一条合法分支当成了失败：
+         * 当这一笔轻到四舍五入后占比同值时，引擎给的是 `TOO_LIGHT`
+         * （「这一下太轻，带子还没动。」）—— 那一屏**本来就不该有数字**，
+         * 因为没有可报的变化。硬要求 1 个，等于逼产品在没有变化时也报一个数。
+         *
+         * 所以断言分两支：报了数就必须恰好一个；说「太轻」就必须一个都没有。
+         */
+        const tooLight = /太轻/.test(frame.allText)
+        check('🔴 全屏最多一个占比数字（说「太轻」时一个都不许有）',
+              tooLight ? frame.pctCount === 0 : frame.pctCount === 1,
+              `${frame.pctCount} 个 · ${tooLight ? '太轻分支' : '正常分支'}：${frame.num}`)
       } else {
         check('事实型定格：零动画零占比数字（信息量在句子里）',
               frame.inks === 0 && frame.pctCount === 0,
@@ -2371,7 +2614,8 @@ await phase('阶段 10.16：导出完整性 · 补记 · 留言 · 你猜 · 动
   }
 
   // ---- 动效可关（红线第三条）----
-  await goto('#/me')
+  // v3.7 C5：氛围三个开关搬进 /settings/ambience 子页
+  await goto('#/settings/ambience')
   const motion = await p.eval(`
     ${HELPERS}
     const box = document.querySelector('[data-testid="ambience-section"]')

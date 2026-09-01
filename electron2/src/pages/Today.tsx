@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore, useTodayActions, useEnabledDimensions } from '../stores/useStore'
-import { DailyGlance } from '../components/DailyGlance'
+import { BandCaption } from '../components/BandCaption'
 import { LightBand } from '../components/LightBand'
 import { GardenTasks } from '../components/GardenTasks'
 import { ActionRow } from '../components/ActionRow'
@@ -92,13 +92,16 @@ export function Today() {
         */}
         <div className="card py-3">
           <LightBand dimensions={dimensions} actions={actions} label="这周的光" />
+          {/* v3.7 A1：原来的「今日一瞥」那张卡降级成这一行图注，与光带共用容器。
+              无句可说时它整个不渲染，卡片高度自然收缩 —— **注解没有容器**，
+              所以没有一个位置在等话。见 BandCaption 顶部。 */}
+          <BandCaption />
         </div>
 
         {/* 几天前的自己留下的那句话。**不置顶** —— 置顶就是待办位（小艾的"退一步"） */}
         <SelfNoteCard />
 
         {/* ① 推荐我做的 */}
-        <DailyGlance />
         <GardenTasks />
 
         {/* 有约定的话，在这里安静地列一行。零按钮、不判定做了没做 */}

@@ -6,10 +6,8 @@ import {
 } from '../stores/useStore'
 import { FlowerChart } from '../components/FlowerChart'
 import { LightBand } from '../components/LightBand'
-import { LightRings } from '../components/LightRings'
+import { WeekRings } from '../components/WeekRings'
 import { PeriodCompare } from '../components/PeriodCompare'
-import { MonthlyCheckin } from '../components/MonthlyCheckin'
-import { PostcardCard } from '../components/PostcardCard'
 import { QuarterlyInvite } from '../components/QuarterlyInvite'
 import { DimensionSheet } from '../components/DimensionSheet'
 import { scoreStage, dimensionVitality } from '../engine/scoring'
@@ -70,8 +68,10 @@ export function Garden() {
           <h1 className="text-2xl font-light tracking-wide">我的花园</h1>
         </div>
 
-        {/* ⓿ 光的年轮：固定九十天，永不横向增长（长度一旦随使用天数变长，它就是进度条） */}
-        <LightRings dimensions={dimensions} actions={actions} />
+        {/* ⓿ 一周的光（v3.7 B1）：子曰要「默认按照一个周的维度，一天是一个竖着的长方形」。
+            九十天那张年轮移到「花园年鉴」——两张图回答的是不同尺度的问题，
+            首屏这一张答「最近这几天我的光怎么分的」，年鉴那一张答「这一季的走势」。 */}
+        <WeekRings dimensions={dimensions} actions={actions} />
 
         {/* ① 形态 + 一句小概括。花瓣可点 —— 主视觉同时是导航 */}
         <div ref={flowerCardRef} className="card flex flex-col items-center gap-3 py-5">
@@ -121,18 +121,25 @@ export function Garden() {
             点那片花瓣就能看它的近况，再列一遍是重复） */}
         <PeriodCompare dimensions={dimensions} actions={actions} />
 
-        {/* 结算区：到期才出现，不到期不占位 */}
-        <PostcardCard flowerHost={flowerCardRef} />
+        {/*
+          结算区（v3.7 B5）——「暂时不要了，隐藏，以后可能需要」，但**只藏两样，邀请不能藏**。
+          书香的理由无法反驳：手册第四章已经把「到期不催、推迟两次缩成小花苞」**写成了承诺**，
+          藏掉它是产品毁自己写下的字。
+          更硬的一条是实证：`bud`（底栏那枚小花苞）的触发条件是**连续推迟两次之后**——
+          而卡一藏，用户就永远不会去推迟，于是**花蕾永不出现，到期信号彻底消失**。
+          藏掉邀请不是"以后再打开"，是把 84 天那场结算变成一件不会发生的事。
+          ⇒ 月度微校准与明信片收进「我的复盘」（它们本来就是回顾物），季度会谈邀请留在这里。
+        */}
         <QuarterlyInvite />
-        <MonthlyCheckin />
 
+        {/* v3.7 B6/B8：两个改名。为什么不照抄子曰给的字，见方案结论 7 */}
         <Link to="/review" className="drawer-link" data-testid="link-review">
-          <span>周对账</span>
-          <span className="drawer-hint">五分钟看一眼形状有没有偏出你的意图 ›</span>
+          <span>我的复盘</span>
+          <span className="drawer-hint">这一周 · 这个月 · 这一年 ›</span>
         </Link>
         <Link to="/stats" className="drawer-link" data-testid="link-stats">
-          <span>细看数据</span>
-          <span className="drawer-hint">季度会谈 · 热力图 · 花语时光机 ›</span>
+          <span>花园年鉴</span>
+          <span className="drawer-hint">光去了哪 · 花长成什么样 · 每一片花瓣 ›</span>
         </Link>
       </div>
 

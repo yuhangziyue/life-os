@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore, useEnabledDimensions } from '../stores/useStore'
 import { monthlyState, composeMonthlyFacts, MONTHLY_CYCLE_DAYS } from '../engine/impression'
 import { calculateScoreInRange } from '../engine/scoring'
-import { gardenBirth } from '../engine/quarterly'
+import { seasonAnchor } from '../engine/quarterly'
 import { pickReviewQuestions } from '../content/reviewQuestions'
 import { FlowerChart } from './FlowerChart'
 import { usePairFlowerSize } from '../hooks/useFlowerSize'
@@ -30,6 +30,9 @@ export function MonthlyCheckin() {
   const actions = useStore(s => s.actions)
   const reviews = useStore(s => s.reviews)
   const addReview = useStore(s => s.addReview)
+  /** ⚠️ 全量维度（不是 enabled）+ 固化锚点 —— 见 seasonAnchor 注释 */
+  const allDimensions = useStore(s => s.dimensions)
+  const seasonAnchorAt = useStore(s => s.seasonAnchorAt)
 
   const [text, setText] = useState('')
   const [writing, setWriting] = useState(false)
@@ -40,8 +43,13 @@ export function MonthlyCheckin() {
     const lastMonthly = reviews
       .filter(r => r.periodType === 'month')
       .reduce<number | null>((max, r) => (max == null || r.createdAt > max ? r.createdAt : max), null)
-    return monthlyState({ lastMonthlyAt: lastMonthly, gardenBirthAt: gardenBirth(dimensions) })
-  }, [reviews, dimensions])
+    // ⚠️ 同上：全量 + 固化锚点。原来传 enabled 维度 ⇒ 休息掉最早那片，
+    //   第 30 天的微校准也会被一起推后
+    return monthlyState({
+      lastMonthlyAt: lastMonthly,
+      gardenBirthAt: seasonAnchor(allDimensions, null, seasonAnchorAt || null),
+    })
+  }, [reviews, allDimensions, seasonAnchorAt])
 
   const facts = useMemo(
     () => composeMonthlyFacts(dimensions, actions, state.periodStart),

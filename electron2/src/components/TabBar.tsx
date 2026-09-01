@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { useStore, useEnabledDimensions } from '../stores/useStore'
+import { useStore } from '../stores/useStore'
 import { quarterlyState } from '../engine/quarterly'
 
 /**
@@ -21,10 +21,13 @@ const TAB_GROUPS: { to: string; label: string; owns: string[] }[] = [
   {
     to: '/garden',
     label: '我的花园',
+    // /review 的三层（hub / 当期 / 历史）靠前缀匹配一并覆盖，不必逐条列
     owns: ['/garden', '/stats', '/review', '/dimensions'],
   },
   // /handbook 必须挂上 —— 小露实读路由表发现它此前不属于任何分组，
-  // 进花语页底栏整片变灰，用户会以为自己掉出了导航。C6 把它搬进「关于」之后更要挂
+  // 进花语页底栏整片变灰，用户会以为自己掉出了导航。C6 把它搬进「关于」之后更要挂。
+  // v3.7 C 组新增的五个子页（/settings/ambience|backup|about|petals|petals/:id）
+  // 同样靠 '/settings' 前缀覆盖 —— 这就是当初把匹配写成前缀而不是白名单的原因
   { to: '/me', label: '设置', owns: ['/me', '/settings', '/handbook'] },
 ]
 
@@ -106,10 +109,14 @@ const ICONS: Record<string, () => ReactElement> = {
 
 export function TabBar() {
   const setQuickAddOpen = useStore(s => s.setQuickAddOpen)
-  const dimensions = useEnabledDimensions()
+  // ⚠️ 这里必须是**全量** dimensions，不是 useEnabledDimensions()：
+  //   锚点 = min(createdAt)，过滤掉「让它休息」的那片会把第 84 天整体推后（v3.7 修）
+  const dimensions = useStore(s => s.dimensions)
   const quarterlyReviews = useStore(s => s.quarterlyReviews)
   const quarterlyDefer = useStore(s => s.quarterlyDefer)
-  const bud = quarterlyState(quarterlyReviews, dimensions, quarterlyDefer).invite === 'bud'
+  const seasonAnchorAt = useStore(s => s.seasonAnchorAt)
+  const bud = quarterlyState(quarterlyReviews, dimensions, quarterlyDefer, Date.now(), seasonAnchorAt)
+    .invite === 'bud'
   const { pathname } = useLocation()
 
   /** 当前路径归属哪个 tab。'/' 只在精确匹配或它自己的二级页下才算 */

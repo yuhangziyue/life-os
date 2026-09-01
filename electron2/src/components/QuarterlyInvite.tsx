@@ -1,4 +1,4 @@
-import { useStore, useEnabledDimensions } from '../stores/useStore'
+import { useStore } from '../stores/useStore'
 import { quarterlyState } from '../engine/quarterly'
 import { QUARTERLY_INVITE, resumeQuestion } from '../content/quarterly'
 
@@ -11,13 +11,16 @@ import { QUARTERLY_INVITE, resumeQuestion } from '../content/quarterly'
  */
 
 export function QuarterlyInvite() {
-  const dimensions = useEnabledDimensions()
+  // ⚠️ 锚点算的是 min(createdAt)，必须用**全量**维度：
+  //   过滤 enabled 会让「让它休息」把第 84 天整体推后（v3.7 修的漂移）
+  const dimensions = useStore(s => s.dimensions)
+  const seasonAnchorAt = useStore(s => s.seasonAnchorAt)
   const reviews = useStore(s => s.quarterlyReviews)
   const defer = useStore(s => s.quarterlyDefer)
   const start = useStore(s => s.startQuarterly)
   const deferQuarterly = useStore(s => s.deferQuarterly)
 
-  const state = quarterlyState(reviews, dimensions, defer)
+  const state = quarterlyState(reviews, dimensions, defer, Date.now(), seasonAnchorAt)
 
   // 有草稿时优先请人回来接着走（不催办，只是把门留着）
   if (state.draft) {

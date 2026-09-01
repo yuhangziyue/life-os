@@ -141,9 +141,42 @@ export function shareInWords(share: number): string {
   return '一小部分'
 }
 
-// ========== 今日账本一瞥（Dashboard 顶部，一天一条） ==========
+// ========== 光带图注（原「今日账本一瞥」，v3.7 A1 降级） ==========
+//
+// ============ 子曰要「第二个卡片的内容可以不要」，四人的裁决是「拆容器，不删内容」 ============
+// 书香的诊断最锋利：**「它不是产品的声音，是产品在清嗓子。」**
+//
+// Lisa 在第四轮**否决了她自己上一轮的方案**（给这张卡加坏日子静音等四道闸门保留它），
+// 那段推理是本轮最值钱的一处：
+//   加闸之后这张卡大部分日子是空的。而**空卡藏不藏，两条路都死**：
+//     · 藏起来 ⇒ 卡片的出现本身成了信号（"今天产品有话说"），
+//       于是**容器的出现变成了事件**。套小艾的检测器：它今天没出现会让人失落吗？
+//       **会，因为它的出现是稀有的。**
+//     · 不藏 ⇒「今天」屏永久多一块空占位，这是最差的。
+//   **⇒ 稀疏 + 有容器 = 奖励结构。**
+//
+// 但彻底删也不对，因为她那条分界被执行错了：
+//   **这条分界只要求"产品说过"，不要求"产品每天说一句"。**
+//   产品其实一直在说：receiptLine、EchoToast、形状句、状态词、月度校准、季度会谈。
+//   **「今天」屏并不沉默，只是它的话不该长在一张卡上。**
+//
+// ⇒ 定稿：**这句话降级为光带的图注**，挂在光带图形下方、与光带共用容器。
+//   注解与卡片的决定性差别，也就是「声音」与「清嗓子」的分界线：
+//   **注解没有容器。它空着的时候什么都不发生，没有位置在等话。**
+//   小艾的检测器自动通过 —— 没出现的话用户根本不知道它本来会出现，
+//   因为那里从来没有一个框。
+//
+// 两处随之而来的收窄：
+//   ① kind 收窄至 growth + companion（**观察**），
+//      `allocation` 那条**追问**（「这是你想要的分法吗？」）搬去月度微校准。
+//      理由：**追问只能出现在用户已经坐下来的地方。** 月度校准是他主动点进去、
+//      有输入框、有跳过路径的屏；「今天」屏他是来放东西的。
+//      **同一句话在这两个屏里一个是提问，一个是拦路。**
+//   ② 四条静音（深夜 / 坏日子 / 样本地板 / 同句 7 天冷却）—— 全部复用现成判据。
+//      这一条顺带修掉一个真 bug：原来**没有坏日子静音**，
+//      于是「这是你想要的分法吗？」会在 `mood: vexed` 的日子里照念。
 
-export type GlanceKind = 'growth' | 'allocation' | 'companion'
+export type GlanceKind = 'growth' | 'companion'
 
 export interface Glance {
   kind: GlanceKind
@@ -156,23 +189,39 @@ export interface Glance {
 }
 
 /**
- * 生成今日那一条账本一瞥。
+ * 生成光带下面那一行图注。返回 null ⇒ **那一行不渲染，卡片高度自然收缩**
+ * （不是空行、不是占位 —— 见本节顶部「注解没有容器」）。
  *
- * 三类轮换，按天确定性挑选（同一天反复打开看到同一条，不闪烁）：
+ * 两类轮换，按天确定性挑选（同一天反复打开看到同一条，不闪烁）：
  *   growth     本周 vs 上周的形态变化 —— 生长感是最强的回来理由（小露）
- *   allocation 本周光的分配 + 「这是你想要的分法吗？」（Lisa）
  *   companion  陪伴天数的纪念
  *
- * 刻意不做的事：不指出沉睡维度并要求补记（那是催办，会被躲）。
+ * 刻意不做的事：
+ *   · 不指出沉睡维度并要求补记（那是催办，会被躲）
+ *   · 不提问（图注是给图配一句注解，不是产品另起一段对你讲话）
  */
 export function composeGlance(params: {
   dimensions: Dimension[]
   actions: Action[]
   companionDays: number
   now?: number
+  /** 深夜静音（22:00–05:00）。深夜是只减不加的时段 */
+  silentNight?: boolean
+  /** 坏日子静音：今天记下的心情里有 vexed / drained ⇒ 产品今天不说观察 */
+  silentRoughDay?: boolean
+  /** 样本地板不足 ⇒ 不做任何判断类表述（判断类要地板，呈现类不要） */
+  floorOk?: boolean
+  /** 上次说过的那句话与它的日子。同一句 7 天内不重复 —— 重复的观察会变成口头禅 */
+  lastText?: string
+  lastAt?: number
 }): Glance | null {
   const { dimensions, actions, companionDays } = params
   const now = params.now ?? Date.now()
+
+  // 🔴 静音优先于一切：**静音不是"没话说"，是"今天不说"**。
+  //   里程碑那一条也一样要让路 —— 在一个觉得自己在毁掉生活的日子里，
+  //   「今天是第 90 天」这句话不是纪念，是对比。
+  if (params.silentNight || params.silentRoughDay) return null
 
   const candidates: Glance[] = []
 
@@ -213,13 +262,18 @@ export function composeGlance(params: {
     })
   }
 
-  // —— allocation：本周光的分配
+  /*
+   * 原来这里有第三支 `allocation`：
+   *   text: `这周你的光有八成给了「工作」` / aside: `这是你想要的分法吗？`
+   * 那句**追问**已搬去月度微校准（见本节顶部）。
+   * 分配这件事本身仍然说，但改成**纯陈述**——图注不提问，
+   * 与 PeriodCompare 的「只说去处」完全同口径。
+   */
   const shares = lightShares(dimensions, actions, weekStart, now)
-  if (shares.length > 0 && shares[0].share >= 0.28) {
+  if (params.floorOk !== false && shares.length > 0 && shares[0].share >= 0.28) {
     candidates.push({
-      kind: 'allocation',
-      text: `这周你的光有${shareInWords(shares[0].share)}给了「${shares[0].name}」`,
-      aside: '这是你想要的分法吗？',
+      kind: 'growth',
+      text: `这周的光大部分给了「${shares[0].name}」`,
       colorHex: shares[0].colorHex,
     })
   }
@@ -236,7 +290,17 @@ export function composeGlance(params: {
 
   // 按天确定性轮换：同一天始终同一条
   const dayIndex = Math.floor(startOfDay(now) / DAY_MS)
-  return candidates[dayIndex % candidates.length]
+  const picked = candidates[dayIndex % candidates.length]
+
+  // 同句 7 天冷却：同一句观察连着几天出现就变成了口头禅，
+  //   而口头禅没有信息量 —— 它只证明产品在按时说话。
+  if (params.lastText && params.lastAt
+      && params.lastText === picked.text
+      && now - params.lastAt < 7 * DAY_MS) {
+    const alt = candidates.find(c => c.text !== picked.text)
+    return alt ?? null
+  }
+  return picked
 }
 
 // ========== 月度微校准（v3.3 T9，报告 §6.2.1） ==========

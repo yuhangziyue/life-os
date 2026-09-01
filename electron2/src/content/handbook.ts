@@ -264,3 +264,28 @@ export const HANDBOOK: HandbookChapter[] = [
     ],
   },
 ]
+
+/**
+ * 按花瓣名取它在手册里那一段（v3.7 C6 + C7）。
+ *
+ * 「花语拆散」的落点之一：手册第三章「每一片花瓣」的每一节，
+ * 正是单片设置页里「这片花瓣照看什么」那一块要显示的文字。
+ * **填「想给多少」之前先读到「这片花瓣照看什么」** —— 这是列表+第三层这个形态的独家红利。
+ *
+ * 为什么按**名字**取而不是给 `Dimension` 加一个 `description` 字段：
+ *   这段文字是**产品定义**（八瓣模型是什么），不是用户数据。
+ *   放进数据库就意味着它会被导出、被导入、可能被改，
+ *   而且新旧两份种子之间必然漂移。留在 content 里，单一权威源。
+ *
+ * 取不到时（用户自种的花瓣）返回 null，由调用方给「这片花瓣是你种下的」那一句。
+ */
+export function petalNote(name: string): { body: string; quote: string | null } | null {
+  const chapter = HANDBOOK.find(c => c.id === 'petals')
+  const section = chapter?.sections.find(s => s.heading === name)
+  if (!section) return null
+  // 引文那一行以「——」开头，与正文分开：正文是说明，引文是气口，
+  // 两者在设置页里的角色不同（引文可以省，说明不能省）
+  const quote = section.body.find(b => b.startsWith('——')) ?? null
+  const body = section.body.filter(b => !b.startsWith('——')).join('')
+  return { body, quote }
+}

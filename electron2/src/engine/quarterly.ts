@@ -35,11 +35,54 @@ export function gardenBirth(dimensions: Dimension[]): number {
   return Math.min(...dimensions.map(d => d.createdAt))
 }
 
+/**
+ * 这一程的锚点（v3.7）—— 84 天会谈与 30 天微校准都从它起算。
+ *
+ * ============ 这不是数据损坏，是查询错误（Lisa 第六轮实证）============
+ * `gardenBirth()` 本身没错，错在**三个调用方全传的是 enabled 维度**。
+ * 于是用户「让最早那片花瓣休息」之后，`min(createdAt)` 跳到第二早的那片，
+ * **第 84 天和第 30 天一起被推后**，「陪你走过的时间」也会缩短。
+ *
+ * 真值一直在库里，没丢过：
+ *   · `createdAt` **只在 `addDimension` 写入一次**，`updateDimension` 从不触碰它
+ *     ⇒ 「让它休息」只改 `isEnabled`，`createdAt` 分毫未动 —— **不可变确证**
+ *   · 而 `useCompanionDays` 那处算"花园诞生"用的就是**全量** `s.dimensions`
+ *     ⇒ **同一个仓库里两处口径不一致，正确的那一处一直在**
+ *
+ * ============ 一个必须堵的边界 ============
+ * `deleteDimension` 是**硬删**，没有软删标记。所以用户一旦**删除**（不是休息）
+ * 最早那片花瓣，全量 `min` 也会跳。⇒ 所以真值必须**落库固化一次**，
+ * 而且要在**首次进门时立即写**，不能懒加载到"用户第一次打开花园页"——
+ * 懒加载会撞上"先去设置页删了一片瓣、再打开花园"这条完全正常的路径，
+ * 然后把错值固化成权威源。写入点在 `loadData`（每次启动都跑，且在任何删除动作之前）。
+ *
+ * ============ 迁移对用户静默 ============
+ * 写进去的是真值，他看到的天数不会变，没有任何可见变化。
+ * 说了反而制造"我的数据出过问题"的不安，而这产品最不能让用户怀疑的就是账的可信度。
+ * 口径：**沉默在用户没有损失的时候是尊重。只有当修正会让可见数字改变时，产品才必须开口。**
+ *
+ * @param allDimensions **全量**维度，不许过滤 isEnabled —— 过滤就是这个 bug 本身
+ * @param storedAnchor  已固化的锚点（settings 里的 seasonAnchorAt）。有就用它，它是权威源
+ */
+export function seasonAnchor(
+  allDimensions: Dimension[],
+  lastCompletedAt: number | null,
+  storedAnchor: number | null,
+): number {
+  // 完成过季度会谈的用户，锚点本就该是那次会谈 —— **显式事件，永不漂移**
+  if (lastCompletedAt != null) return lastCompletedAt
+  if (storedAnchor != null && storedAnchor > 0) return storedAnchor
+  return gardenBirth(allDimensions)
+}
+
 export function quarterlyState(
   reviews: QuarterlyReview[],
+  /** ⚠️ 传**全量**维度，不是 enabled —— 过滤会让锚点随「让它休息」漂移（见 seasonAnchor） */
   dimensions: Dimension[],
   defer: { until: number; count: number },
   now = Date.now(),
+  /** 固化的这一程起点（store 的 seasonAnchorAt）。0/null = 还没固化，退回全量 min */
+  storedAnchor: number | null = null,
 ): QuarterlyState {
   const completed = reviews
     .filter(r => r.completedAt != null)
@@ -47,7 +90,7 @@ export function quarterlyState(
   const lastCompleted = completed[0] ?? null
   const draft = reviews.find(r => r.completedAt == null) ?? null
 
-  const anchor = lastCompleted?.completedAt ?? gardenBirth(dimensions)
+  const anchor = seasonAnchor(dimensions, lastCompleted?.completedAt ?? null, storedAnchor ?? null)
   const dueAt = anchor + QUARTER_MS
   const due = now >= dueAt
 

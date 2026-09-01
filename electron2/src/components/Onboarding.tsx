@@ -106,7 +106,12 @@ export function Onboarding() {
       data-testid="onboarding"
       style={{ background: 'var(--bg-primary)' }}
     >
-      <div className="min-h-full flex items-center justify-center p-8">
+      {/*
+        v3.7：窄屏收口。原来是 `items-center p-8` ——
+        在 390px 的手机上左右各吃掉 32px，而第二幕内容本来就高（八条滑块 + 花 + 按钮），
+        垂直居中会让顶部标题被切掉。窄屏改**顶对齐 + 小内边距**，宽屏保持原样。
+      */}
+      <div className="min-h-full flex items-start sm:items-center justify-center p-4 py-8 sm:p-8">
         {/* 打分幕要并排放花，比其余两幕宽 */}
         <div
           className={`w-full animate-fade-in ${act === 1 ? 'max-w-4xl' : 'max-w-xl'}`}
@@ -116,8 +121,9 @@ export function Onboarding() {
           {act === 0 && (
             <div className="text-center space-y-6">
               <div className="flex justify-center"><FlowerLogo size={56} /></div>
-              <h1 className="text-3xl font-light tracking-[0.2em]">生命之花</h1>
-              <p className="text-base text-[var(--text-secondary)] leading-loose">
+              {/* 窄屏收一档：0.2em 字距 + 30px 在 390px 上会顶到两边边缘 */}
+              <h1 className="text-2xl sm:text-3xl font-light tracking-[0.16em] sm:tracking-[0.2em]">生命之花</h1>
+              <p className="text-sm sm:text-base text-[var(--text-secondary)] leading-loose">
                 这里不是一张考核表，<br />是一座只属于你的花园。
               </p>
               <p className="text-sm text-[var(--text-muted)] leading-loose max-w-md mx-auto">
@@ -138,16 +144,25 @@ export function Onboarding() {
           {act === 1 && (
             <div className="space-y-5" data-testid="onboarding-scoring">
               <div className="text-center">
-                <h2 className="text-2xl font-light tracking-wide mb-2">此刻的花</h2>
+                <h2 className="text-xl sm:text-2xl font-light tracking-wide mb-2">此刻的花</h2>
                 <p className="text-sm text-[var(--text-muted)] leading-relaxed">
                   现在的你，觉得每片花瓣舒展到哪里了？<br />凭直觉就好——没有对错，之后随时可以改。
                 </p>
               </div>
 
-              {/* 左打分 · 右实时花形。每滑一格，那片花瓣当场伸缩——
-                  自己看见的东西不会被反驳（小露 R1 的完整形态） */}
-              <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-start">
-                <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
+              {/*
+                左打分 · 右实时花形。每滑一格，那片花瓣当场伸缩——
+                自己看见的东西不会被反驳（小露 R1 的完整形态）。
+
+                🔴 v3.7 窄屏修的是一个**比样式更实质的问题**：
+                  这一幕的全部意义是「你一边滑，一边看见花在动」。
+                  而单列塌下来之后花被排到列表**下面** ——
+                  用户滑滑块时花在屏幕外，**那一幕就只剩八条滑块，等于变回了一张问卷**。
+                  ⇒ 所以窄屏下把花**提到列表前面并吸顶**（`order` + `sticky`），
+                    列表在它下面滚。宽屏仍是左列表右花（花吸顶不变）。
+              */}
+              <div className="flex flex-col md:grid gap-4 md:gap-6 md:grid-cols-[1fr_auto] md:items-start">
+                <div className="space-y-3 order-2 md:order-1 max-h-[42vh] md:max-h-[52vh] overflow-y-auto pr-1">
                   {dimensions.map(d => (
                     <div key={d.id} className="space-y-1">
                       <div className="text-xs text-[var(--text-muted)] leading-relaxed pl-0.5">
@@ -162,7 +177,9 @@ export function Onboarding() {
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-center md:sticky md:top-0">
+                {/* 窄屏：order-1 排到列表之前 + sticky 吸顶，滑动时始终在视野里 */}
+                <div className="flex justify-center order-1 md:order-2 sticky top-0 md:top-0 z-10 py-1"
+                     style={{ background: 'var(--bg-primary)' }}>
                   <FlowerChart
                     dimensions={dimensions}
                     actions={actions}
@@ -183,7 +200,7 @@ export function Onboarding() {
 
           {act === 2 && (
             <div className="text-center space-y-6">
-              <h2 className="text-2xl font-light tracking-wide">花开了</h2>
+              <h2 className="text-xl sm:text-2xl font-light tracking-wide">花开了</h2>
               <div ref={bloomHost} className="flex justify-center animate-bloom">
                 <FlowerChart dimensions={dimensions} actions={actions} size={onbFlower} />
               </div>

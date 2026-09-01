@@ -7,6 +7,7 @@ import { hexToRgba } from '../services/theme'
 import { focusGold } from '../services/focus'
 import { getSnapshots } from '../db'
 import { SubPageHeader } from '../components/SubPageHeader'
+import { LightRings } from '../components/LightRings'
 
 type ViewMode = 'day' | 'week' | 'month' | 'year'
 
@@ -148,7 +149,16 @@ export function Stats() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="page-pad space-y-4">
-        <SubPageHeader title="细看数据" fallback="/garden" />
+        {/* v3.7 B8 改名：「细看数据」→「花园年鉴」。
+            子曰给的是「花园印象」，书香判它名实不符（这页分层后是一座按时间归档的
+            证据库，「印象」许的诺它兑不出；「年鉴」兑得出，而且年鉴是一本书不是仪表盘）。
+            驳回唯一用户命名的判据见 v3.7 方案结论 7。 */}
+        <SubPageHeader title="花园年鉴" subtitle="光去了哪 · 花长成什么样 · 每一片花瓣" fallback="/garden" />
+
+        {/* 九十天的年轮从「我的花园」首屏搬到这里（v3.7 B1）——
+            首屏那张答「最近这几天我的光怎么分的」，这一张答「这一季的走势」。
+            固定 90 天、永不横向增长：长度一旦随使用天数变长，它就是进度条。 */}
+        <LightRings dimensions={dimensions} actions={actions} />
 
         {/* 陪伴（C3）：不是 streak，永不清零，没有里程碑弹窗 */}
         <div className="card flex items-center gap-8" data-testid="companion-card">

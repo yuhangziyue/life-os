@@ -21,7 +21,14 @@ import { DimensionDetail } from './pages/DimensionDetail'
 import { Actions } from './pages/Actions'
 import { Stats } from './pages/Stats'
 import { ReviewPage } from './pages/Review'
+import { ReviewHub } from './pages/ReviewHub'
+import { ReviewHistory } from './pages/ReviewHistory'
 import { Settings } from './pages/Settings'
+import { SettingsAmbience } from './pages/SettingsAmbience'
+import { SettingsBackup } from './pages/SettingsBackup'
+import { SettingsAbout } from './pages/SettingsAbout'
+import { PetalList } from './pages/PetalList'
+import { PetalEdit } from './pages/PetalEdit'
 import { Handbook } from './pages/Handbook'
 
 type AppPhase = 'loading' | 'error' | 'ready'
@@ -178,9 +185,22 @@ export default function App() {
             <Route path="/dimensions/:id" element={<DimensionDetail />} />
             <Route path="/actions" element={<Actions />} />
             <Route path="/stats" element={<Stats />} />
-            <Route path="/review" element={<ReviewPage />} />
+            {/* v3.7 B6：复盘从「一页三 tab」拆成「入口页 + 三个当期页 + 历史独立入口」。
+                子曰原话：「点进去可以看到自己每周每月每年的复盘情况，
+                历史回顾放一个单独的入口，月回顾和年回顾也是，默认只显示当前周月年度的」 */}
+            <Route path="/review" element={<ReviewHub />} />
+            <Route path="/review/history" element={<ReviewHistory />} />
+            <Route path="/review/:period" element={<ReviewPage />} />
             <Route path="/handbook" element={<Handbook />} />
+            {/* v3.7 C 组：设置页从「七张卡摊一屏」改成「一份清单 + 五个子页」。
+                子曰原话：主题上拉菜单 / 数据备份·关于·氛围点进新页 /
+                花语放到关于的子页 / 这座花园点「修改」进花瓣列表再进单片页 */}
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/ambience" element={<SettingsAmbience />} />
+            <Route path="/settings/backup" element={<SettingsBackup />} />
+            <Route path="/settings/about" element={<SettingsAbout />} />
+            <Route path="/settings/petals" element={<PetalList />} />
+            <Route path="/settings/petals/:id" element={<PetalEdit />} />
           </Routes>
         </main>
         {/* 底栏三入口 + 记一笔 FAB：全宽度生效（v3.5.1 起手机端是唯一形态） */}

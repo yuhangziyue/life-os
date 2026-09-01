@@ -193,19 +193,47 @@ try {
   check('留了沉睡花瓣做演示', dormant.length >= 1, dormant.join(',') || '(无)')
 
   // ---- 4. 七个页面逐个渲染 + 截图 ----
+  /**
+   * v3.7：页面表更新。三处改名（设置 / 花园年鉴 / 我的复盘）+ 新增九个子页。
+   *
+   * ⚠️ 字符数下限**不能一刀切 120**：C 组与 B6 的整个用意就是
+   *   「主界面简化，点进去看具体的」——**入口页天生就短**。
+   *   拿 120 字去要求一份只有四行清单的页面，等于用旧结构的度量去否决新结构。
+   *   所以入口页单独给一个下限，并额外断言"它有几行可点的东西"。
+   */
   const PAGES = [
-    ['', '今天'], ['#/garden', '我的花园'], ['#/me', '我'],
-    ['#/dimensions', '维度列表'], ['#/actions', '全部记录'],
-    ['#/stats', '细看数据'], ['#/review', '周对账'], ['#/handbook', '花语'],
+    ['', '今天', 120], ['#/garden', '我的花园', 120],
+    ['#/dimensions', '维度列表', 120], ['#/actions', '全部记录', 120],
+    ['#/stats', '花园年鉴', 120], ['#/handbook', '花语', 120],
+    ['#/review/week', '这一周', 120],
+    ['#/settings/backup', '备份与导出', 100],
+    ['#/settings/about', '关于', 120],
+    ['#/settings/petals', '花瓣', 100],
+    // 入口页：短是设计意图，不是渲染失败
+    ['#/me', '设置', 40], ['#/review', '我的复盘', 40],
+    ['#/settings/ambience', '氛围', 60],
+    ['#/review/history', '历史回顾', 20],
   ]
-  for (const [hash, label] of PAGES) {
+  for (const [hash, label, minChars] of PAGES) {
     await page.eval(`location.hash = ${JSON.stringify(hash)}; return 1`)
     await sleep(900)
     const info = await page.eval(`
       const m = document.querySelector('main')
-      return { text: (m?.innerText || '').trim().length, h1: document.querySelector('h1')?.innerText || '' }`)
-    check(`${label} 渲染出内容`, info.text > 120, `${info.text} 字符 · h1「${info.h1}」`)
+      return {
+        text: (m?.innerText || '').trim().length,
+        h1: (document.querySelector('h1') || document.querySelector('h2'))?.innerText || '',
+        clickable: m ? m.querySelectorAll('a, button').length : 0,
+      }`)
+    check(`${label} 渲染出内容`, info.text > minChars, `${info.text} 字符（下限 ${minChars}）· 标题「${info.h1}」`)
     await page.shot(path.join(SHOTS, `${label}.png`))
+  }
+
+  // 两个入口页额外守：它们的价值在于"有几扇门可推"，不在于字多
+  for (const [hash, label, minLinks] of [['#/me', '设置', 4], ['#/review', '我的复盘', 4]]) {
+    await page.eval(`location.hash = ${JSON.stringify(hash)}; return 1`)
+    await sleep(700)
+    const n = await page.eval(`return document.querySelectorAll('main a, main button').length`)
+    check(`${label} 入口页有 ≥${minLinks} 个可点入口（简化不等于变空）`, n >= minLinks, `${n} 个`)
   }
 
   // ---- 3. 持久化：写一条 → reload → 还在 ----
@@ -260,10 +288,16 @@ try {
         `kind=${persisted.kind} persisted=${persisted.persisted}`)
 
   const truth = await page.eval(`
-    location.hash = '#/me'
+    // v3.7 C3：存储真相跟着导出一起搬进 /settings/backup 子页。
+    //   🔴 界面简化不能把「数据会丢」一起简化掉 —— 所以它必须还在，只是换了页
+    location.hash = '#/settings/backup'
     await new Promise(r => setTimeout(r, 900))
     const el = document.querySelector('[data-testid="storage-truth"]')
-    const about = document.querySelector('[data-testid="about-section"]')?.innerText || ''
+    location.hash = '#/settings/about'
+    await new Promise(r => setTimeout(r, 700))
+    const about = document.querySelector('[data-testid="about-promises"]')?.innerText || ''
+    location.hash = '#/settings/backup'
+    await new Promise(r => setTimeout(r, 700))
     return {
       shown: !!el,
       text: el?.innerText || '',
@@ -271,7 +305,7 @@ try {
       aboutMentionsSqlite: /SQLite/i.test(about),
     }
   `)
-  check('「我」页给出存储真相（A3）', truth.shown === true)
+  check('备份子页给出存储真相（A3，搬页但不许被简化掉）', truth.shown === true)
   check('明说「清缓存会一并清掉」——不承诺做不到的事',
         /清缓存|清理缓存/.test(truth.text) && /清掉/.test(truth.text),
         truth.text.replace(/\n/g, ' / ').slice(0, 100))
@@ -381,6 +415,88 @@ try {
         mobile.tabs.join('|') === '今天|我的花园|设置', mobile.tabs.join(' / '))
   check('侧栏已删（v3.6：手机端是唯一形态）且页面不横向溢出',
         mobile.noAside && mobile.noSideScroll, JSON.stringify(mobile))
+
+  /**
+   * 🔴 引导三幕的窄屏（v3.7，子曰点名：「引导页里的此刻的花、花开了 等几个引导页，
+   * 还不是窄屏的」）。
+   *
+   * 这里断言的不是类名，是**实测几何**：
+   *   ① 三幕都不许横向溢出
+   *   ② 第二幕（此刻的花）里，**花必须在视野内**，而且要排在滑块列表之前 ——
+   *      这一幕的全部意义是「你一边滑，一边看见花在动」。
+   *      单列塌下来之后花被排到列表下面，滑滑块时花在屏幕外，
+   *      **那一幕就只剩八条滑块，等于变回了一张问卷**。
+   *   ③ 标题不许被裁掉（原来 `items-center` 垂直居中，第二幕内容高，顶部会被切）
+   */
+  await page.eval(`
+    await window.electronAPI.dbSettingsSet('onboardingDone', '')
+    return 1
+  `)
+  await page.eval(`location.reload(); return 1`)
+  await sleep(2200)
+
+  const onbActs = []
+  for (const act of ['第一幕 · 生命之花', '第二幕 · 此刻的花', '第三幕 · 花开了']) {
+    const geo = await page.eval(`
+      const box = document.querySelector('[data-testid="onboarding"]')
+      if (!box) return { shown: false }
+      const vw = window.innerWidth, vh = window.innerHeight
+      const h1 = box.querySelector('h1, h2')
+      const hr = h1?.getBoundingClientRect()
+      const flower = box.querySelector('canvas')
+      const fr = flower?.getBoundingClientRect()
+      const list = box.querySelector('[data-testid="onboarding-score-row"]')
+      const lr = list?.getBoundingClientRect()
+      return {
+        shown: true,
+        noSideScroll: box.scrollWidth <= vw + 1 && document.documentElement.scrollWidth <= vw + 1,
+        // 标题完整可见（不被顶部切掉）
+        titleVisible: !!hr && hr.top >= -1 && hr.bottom <= vh,
+        // 花在视野内
+        flowerInView: !fr || (fr.top < vh && fr.bottom > 0 && fr.left >= -1 && fr.right <= vw + 1),
+        // 第二幕专属：花排在第一条滑块之前（窄屏 order 生效）
+        flowerBeforeList: !lr || !fr || fr.top <= lr.top,
+        hasList: !!lr,
+      }
+    `)
+    onbActs.push({ act, ...geo })
+    if (!geo.shown) break
+    // 走去下一幕
+    const advanced = await page.eval(`
+      const btn = [...document.querySelectorAll('[data-testid="onboarding"] button')]
+        .find(b => /走进花园|让花开/.test(b.innerText))
+      if (!btn) return false
+      btn.click(); return true
+    `)
+    if (!advanced) break
+    await sleep(1600)
+  }
+
+  const shownActs = onbActs.filter(a => a.shown)
+  check('引导三幕都跑到了（首启引导在窄屏下可用）', shownActs.length >= 2,
+        shownActs.map(a => a.act).join(' → '))
+  const overflowing = shownActs.filter(a => !a.noSideScroll)
+  check('🔴 引导每一幕都不横向溢出', overflowing.length === 0,
+        overflowing.map(a => a.act).join(' / ') || '三幕都不溢出')
+  const cutTitles = shownActs.filter(a => !a.titleVisible)
+  check('🔴 引导每一幕的标题完整可见（窄屏改顶对齐后不再被切）', cutTitles.length === 0,
+        cutTitles.map(a => a.act).join(' / ') || '标题都完整')
+  const flowerOut = shownActs.filter(a => !a.flowerInView)
+  check('🔴 花在视野内（第二幕靠它才成立：一边滑一边看见花在动）', flowerOut.length === 0,
+        flowerOut.map(a => a.act).join(' / ') || '花都在视野内')
+  const scoring = shownActs.find(a => a.hasList)
+  if (scoring) {
+    check('🔴 窄屏下花排在滑块列表之前（否则滑滑块时花在屏幕外，那一幕退回成问卷）',
+          scoring.flowerBeforeList, JSON.stringify(scoring.flowerBeforeList))
+  }
+
+  // 引导跑完，恢复成演示态再继续后面的断言
+  await page.eval(`
+    await window.electronAPI.dbSettingsSet('onboardingDone', '1')
+    return 1
+  `)
+  await page.eval(`location.reload(); return 1`)
+  await sleep(1800)
 
   // 🔴 回归守卫：演示浮标原来钉在右下 14px，正好盖住底栏第三个入口「我」——
   // 第三个入口在手机上点不到。用 elementFromPoint 做真实命中测试，别只看坐标算差集。

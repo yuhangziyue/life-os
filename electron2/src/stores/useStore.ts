@@ -36,21 +36,33 @@ import type { Review } from '../models/review'
 import type { AIConfig, AITestResult } from '../services/ai'
 import type { QuarterlyReview } from '../models/quarterly'
 import { MAX_FOCUS } from '../models/quarterly'
-import { nextDeferUntil, gardenBirth } from '../engine/quarterly'
+import { nextDeferUntil, gardenBirth, seasonAnchor } from '../engine/quarterly'
 
 /**
  * 本季起点 = 上一次「完成」的季度会谈时刻；从未谈过则花园生日。
  * 给行动回响的账本行（「本季第 N 次照顾 X」）用，与产品的 84 天节奏同源，
  * 刻意不用自然季度 —— 这座花园的季节是从上次结算算起的。
  */
-function seasonStartOf(reviews: QuarterlyReview[], dimensions: Dimension[]): number {
+function seasonStartOf(
+  reviews: QuarterlyReview[],
+  dimensions: Dimension[],
+  storedAnchor: number | null,
+): number {
   const done = reviews.filter(r => r.completedAt != null)
-  if (done.length === 0) return gardenBirth(dimensions)
-  return Math.max(...done.map(r => r.completedAt as number))
+  const last = done.length > 0 ? Math.max(...done.map(r => r.completedAt as number)) : null
+  // v3.7：走 seasonAnchor（会谈时刻 > 固化值 > 全量 min(createdAt)），
+  //   而不是直接 gardenBirth(enabled) —— 后者会随「让它休息」漂移
+  return seasonAnchor(dimensions, last, storedAnchor)
 }
 
 /** 待播定格帧的载荷落在 settings（key-value 能存 JSON）；闸门与幂等走 events 表 */
 const AHA_PENDING_KEY = 'ahaPending'
+
+/**
+ * 这一程起点的固化值（v3.7）。见 `engine/quarterly.ts` 的 `seasonAnchor` 注释 ——
+ * 它存在的唯一理由是 `deleteDimension` 是硬删，真值删掉就取不回来了。
+ */
+const SEASON_ANCHOR_KEY = 'seasonAnchorAt'
 
 /** 闸门要的两个查询。走 window.electronAPI，桌面与网页两版都已实现 */
 function ahaDeps() {
@@ -128,6 +140,11 @@ interface AppState {
   sidebarCollapsed: boolean
   quickAddOpen: boolean
   /** 「再记一条」预选的维度 id（v3.3 T6）；'' = 不预选 */
+  /**
+   * 这一程起点的固化值（v3.7）。0 = 还没固化过。
+   * 存在 store 里是为了让同步选择器读得到 —— 它的权威副本在 DB settings 表。
+   */
+  seasonAnchorAt: number
   quickAddPreset: string
   /** 轻推带过来的那句话（v3.7）。只做预填，用户可改可清 —— 重量由他定，不由花园定 */
   quickAddText: string
@@ -245,6 +262,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadError: null,
   sidebarCollapsed: false,
   quickAddOpen: false,
+  seasonAnchorAt: 0,
   quickAddPreset: '',
   quickAddText: '',
   selectedDate: startOfToday(),
@@ -279,7 +297,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Step 2: 并行加载所有数据
       LOG('loadData', 'Step 2: 并行加载数据...')
-      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen, returnSeen, weekSeen] = await Promise.all([
+      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen, returnSeen, weekSeen, storedAnchor] = await Promise.all([
         getDimensions(),
         getScoreRubrics(),
         getBranches(),
@@ -292,6 +310,7 @@ export const useStore = create<AppState>((set, get) => ({
         getSetting(LIGHT_LAW_SEEN_KEY),
         getSetting('returnCardSeenAt'),
         getSetting(WEEK_LIGHT_SEEN_KEY),
+        getSetting(SEASON_ANCHOR_KEY),
       ])
       LOG('loadData', `Step 2: 完成 - dims=${dimensions.length}, rubrics=${scoreRubrics.length}, branches=${branches.length}, goals=${goals.length}, actions=${actions.length}, reviews=${reviews.length}`)
 
@@ -307,10 +326,31 @@ export const useStore = create<AppState>((set, get) => ({
       )
       LOG('loadData', 'Step 3: 完成')
 
+      /*
+       * 这一程的锚点固化（v3.7）—— 必须在**这里**写，不能懒加载。
+       *
+       * `gardenBirth = min(createdAt)` 的真值只有在「最早那片花瓣还在库里」时才取得到，
+       * 而 `deleteDimension` 是**硬删**：用户删掉最早那片之后，真值就永久取不回来了。
+       * `loadData` 每次启动都跑，且跑在任何删除动作之前 —— 这是唯一安全的写入点。
+       *
+       * 🔴 用**全量** `dimensions`，不许过滤 isEnabled：
+       *   过滤就是这个 bug 本身（三个调用方原来全传 enabled，于是「让最早那片休息」
+       *   会把第 84 天和第 30 天一起推后）。
+       * 🔴 只在缺失时写一次。已有值就是权威源，绝不覆盖 —— 覆盖会让锚点重新变成可漂移的。
+       * 🔴 迁移对用户静默：写进去的是真值，可见数字不变，所以不告知。
+       */
+      let anchorAt = Number(storedAnchor || 0)
+      if (!anchorAt && dimensions.length > 0) {
+        anchorAt = gardenBirth(dimensions)
+        await setSetting(SEASON_ANCHOR_KEY, String(anchorAt))
+        LOG('loadData', `锚点固化：${new Date(anchorAt).toLocaleDateString('zh-CN')}（全量 ${dimensions.length} 片）`)
+      }
+
       // 取待播帧：已经有一屏在显示时不再取（避免重复消费）
       const takenAha = get().aha ? {} : await takePendingAha(actions)
 
       set({
+        seasonAnchorAt: anchorAt,
         dimensions: updatedDims,
         scoreRubrics,
         branches,
@@ -568,7 +608,7 @@ export const useStore = create<AppState>((set, get) => ({
           actions,
           quality: newAction.quality,
           seed: newAction.id,
-          seasonStart: seasonStartOf(quarterlyReviews, dimensions),
+          seasonStart: seasonStartOf(quarterlyReviews, dimensions, get().seasonAnchorAt),
         })
       : null
 
