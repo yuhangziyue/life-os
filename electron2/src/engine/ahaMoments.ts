@@ -172,3 +172,98 @@ export function intentSetLines(i: IntentSet): string[] {
   lines.push('它不会主动来找你。你在记一笔时选到这片花瓣，它会自己出现。')
   return lines
 }
+
+// ========== 第 7 天「一周的光」（week_light，形态类）==========
+//
+// 四个 Aha 是一条递进线（v3.5 设计稿第四节）：
+//   第 1 天一张快照 → 每次记录一次分配 → **第 7 天一段趋势** → 第 84 天一次结算。
+// 这一条是那条线上唯一还缺的一环，也是「连续证据」第一次真正生效的时刻：
+// 攒了七天，形状第一次不是一天的偶然，而是一周的事实。
+//
+// 🔴 它只在**花园生日满 7 天、且这七天里至少 4 天有记录**时出现一次（终身一次）。
+//   四天是「一周的形状」成立的最低样本 —— 两三天的形状还是偶然，说它是趋势就是过度解读。
+
+export const WEEK_LIGHT_MIN_DAYS = 4
+export const WEEK_LIGHT_SEEN_KEY = 'ahaWeekLightSeen'
+
+export function detectWeekLight(params: {
+  actions: Action[]
+  gardenBornAt: number
+  now?: number
+}): { daysWithRecord: number } | null {
+  const { actions, gardenBornAt } = params
+  const now = params.now ?? Date.now()
+  if (startOfDay(now) - startOfDay(gardenBornAt) < 7 * DAY_MS) return null
+
+  const days = new Set<number>()
+  for (const a of actions) {
+    if (!a.isCompleted) continue
+    const d = startOfDay(a.date)
+    if (d > startOfDay(now) || d < startOfDay(now) - 6 * DAY_MS) continue
+    days.add(d)
+  }
+  if (days.size < WEEK_LIGHT_MIN_DAYS) return null
+  return { daysWithRecord: days.size }
+}
+
+/**
+ * 那两行。第一行是事实（七天的形状第一次成立），第二行把它接回产品的立论。
+ * 不出现「坚持」「连续」「不错」—— 它报告的是**证据够了**，不是**你做到了**。
+ */
+export function weekLightLines(info: { daysWithRecord: number }): string[] {
+  return [
+    `这七天里有 ${info.daysWithRecord} 天留下了记录。`,
+    '够画出一个形状了 —— 从这里开始，光的去处不再是某一天的偶然。',
+  ]
+}
+
+// ========== 「留给自己的一句话」（v3.6.2，小艾提案 F + Lisa 三轮四条改造）==========
+//
+// 断层的本质是零催办把外部 prompt 砍掉了，只剩两条路：上下文触发（约定）与内部触发（这条）。
+// 形态：记录面板底部一行可选输入；下次打开「今天」时**署上日期**显示出来。
+//
+// ============ 为什么它不是催办 ============
+// 系统一个字都没说，说话的是几天前的他自己。承诺一致性在这里是**用户对自己**生效的，
+// 产品只是信箱。蔡格尼克在这里的正确用法不是「任务未完成」的红点张力（那是催办），
+// 而是**一句没有回音的话** —— 人对自己留给自己的话有回复冲动，而这种冲动不产生愧疚，
+// 因为没人在等。
+//
+// ============ Lisa 三轮的四条硬约束（缺一条它就变成钉在首屏的指控）============
+//   a) placeholder 把动词从「做」移到「知道」：「想让下次的自己知道什么」——
+//      「知道」不构成任务。这是零校验的软引导，比任何输入限制都有效。
+//      🔴 她**明确拒绝对输入做句式约束**：「约束用户能对自己说什么话，是产品越权。」
+//   b) 读侧的动作只有「收起这句」，**永不出现「完成」** ——
+//      一条他没做到的「一定要去体检」不会因此变成一件未完成事项
+//   c) **会过期**：最多显示 7 天。「如果它永远挂在那里，那句没做到的话
+//      就变成一枚钉在首屏上的指控。时间是唯一的解药：它必须会自己走。」
+//   d) 永远只显示一条，不显示条数、不显示「已过 X 天」、不显示角标
+//
+// 另加小艾的「退一步」形态：**不置顶** —— 置顶就是待办位。它混在「今天」的内容流里，
+// 与其他卡片同级。
+
+export const NOTE_KEY = 'selfNote'
+export const NOTE_TTL_DAYS = 7
+export const NOTE_PLACEHOLDER = '想让下次的自己知道什么'
+
+export interface SelfNote {
+  text: string
+  at: number
+}
+
+export function parseSelfNote(raw: string | null, now = Date.now()): SelfNote | null {
+  if (!raw) return null
+  try {
+    const n = JSON.parse(raw) as SelfNote
+    if (!n?.text) return null
+    // 过期即消失（约束 c）。不是"标记为过期"，是真的不再出现
+    if (startOfDay(now) - startOfDay(n.at) >= NOTE_TTL_DAYS * DAY_MS) return null
+    return n
+  } catch {
+    return null
+  }
+}
+
+/** 「8 月 24 日的你留下：……」—— 署上日期，它就从一条待办变回一封来自过去的自己的短信 */
+export function selfNoteLead(n: SelfNote): string {
+  return `${new Date(n.at).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}的你留下`
+}

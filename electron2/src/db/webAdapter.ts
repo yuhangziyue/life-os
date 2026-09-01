@@ -168,6 +168,13 @@ async function pickPersist(): Promise<Persist> {
 
 export interface WebBackend {
   api: ElectronAPI
+  /**
+   * 用另一套种子重灌整库（v3.6.2）。
+   * 演示版的两条路径共用它：「恢复演示数据」灌 demoSeed，「种我自己的」灌空骨架。
+   * 刻意不塞进 dbClearAll —— 那个接口在桌面版有自己的语义（清空后灌空白骨架），
+   * 两边职责不同，混在一起迟早有人改错一边。
+   */
+  reseed: (seed: (now: number) => WebSnapshot) => Promise<void>
   /** 实际用上的存储层，界面上要如实报出来，不硬写「保存在本地」 */
   storageKind: PersistKind
   /** 强制落盘（页面隐藏前调一次，避免 debounce 还没跑就被关掉） */
@@ -293,6 +300,7 @@ export async function createWebBackend(opts: WebBackendOptions): Promise<WebBack
     // ---- settings / snapshots / events ----
     dbSettingsGet: async (key) => (key in db.settings ? db.settings[key] : null),
     dbSettingsSet: async (key, value) => { db.settings[key] = String(value); return ok() },
+    dbSettingsGetAll: async () => clone(db.settings),
     dbSnapshotsGetAll: async () => clone([...db.flower_snapshots].sort((a, b) => a.takenAt - b.takenAt)),
     dbSnapshotsAdd: async (row) => {
       // weekKey 在 SQLite 里是 UNIQUE + INSERT OR REPLACE：同一周重复拍只留最新一张
@@ -361,7 +369,13 @@ export async function createWebBackend(opts: WebBackendOptions): Promise<WebBack
     },
   }
 
-  return { api, storageKind: persist.kind, flush }
+  async function reseed(seed: (now: number) => WebSnapshot) {
+    db = seed(Date.now())
+    schedule()
+    await flush()
+  }
+
+  return { api, storageKind: persist.kind, flush, reseed }
 }
 
 export function storageLabel(kind: PersistKind): string {

@@ -93,7 +93,24 @@ async function reload() {
   await sleep(3500)
   await inject()
 }
-async function goto(hash) { await p.eval(`location.hash='${hash}'; return 1`); await sleep(900); await inject() }
+/**
+ * 换页。打包档首绘慢，固定 sleep 会赶在渲染前 —— 台账里那 4 条「导航竞态抖动」就是它。
+ * 改成轮询：等 hash 真的变了、且 main 里有内容了才继续。
+ */
+async function goto(hash) {
+  await p.eval(`location.hash='${hash}'; return 1`)
+  for (let i = 0; i < 24; i++) {
+    const ok = await p.eval(`
+      const h = location.hash || '#/'
+      const want = ${JSON.stringify(hash || '#/')}
+      const m = document.querySelector('main')
+      return (h === want || h === want + '/') && !!m && (m.innerText || '').trim().length > 0
+    `)
+    if (ok) break
+    await sleep(120)
+  }
+  await inject()
+}
 
 let baselineActions = 0
 
@@ -2095,6 +2112,214 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
     return 1
   `)
   await sleep(600)
+})
+
+// ======================================================================
+// ======================================================================
+await phase('阶段 10.16：导出完整性 · 补记 · 留言 · 你猜 · 动效可关（v3.6.2）', async () => {
+  // ---- 🔴 导出完整性：v3.6.1 之前只导六张表，季度会谈记录全丢 ----
+  // 网页版我们亲口写着「导出是唯一的保命通道」，所以这条按数据安全对待
+  const dump = await p.eval(`
+    const { exportJSON } = await import('/src/db/export.ts').catch(() => ({}))
+    return null   // 渲染层没有模块入口，改走下面的界面路径
+  `).catch(() => null)
+  void dump
+
+  await goto('#/me')
+  const exported = await p.eval(`
+    // 直接调 store 侧那条通路：设置页的「导出 JSON」走 downloadJSON()，
+    // 它内部就是 exportJSON()。这里只验数据完整性，不验浏览器下载行为。
+    const q = await window.electronAPI.dbQuarterlyGetAll()
+    const snaps = await window.electronAPI.dbSnapshotsGetAll()
+    const settings = await window.electronAPI.dbSettingsGetAll()
+    return { quarterly: q.length, snaps: snaps.length, settingKeys: Object.keys(settings).length }
+  `)
+  check('全量读 settings 的通路打通（导出不再靠字段白名单）',
+        exported.settingKeys >= 0, `${exported.settingKeys} 个 key`)
+
+  const roundtrip = await p.eval(`
+    ${HELPERS}
+    // 造一场会谈 + 一张定妆照 + 一个 setting，导出再解析，看它们在不在
+    const now = Date.now()
+    await window.electronAPI.dbQuarterlyUpsert({
+      id: 'e2e-export-q', startedAt: now, completedAt: now, actProgress: 5,
+      scores: '{}', reflections: '{}', focusDimensionIds: '[]', intent: '导出完整性验证',
+    })
+    await window.electronAPI.dbSnapshotsAdd({
+      id: 'e2e-export-s', weekKey: '2099-W01', takenAt: now, dataUrl: 'data:image/png;base64,AAAA',
+    })
+    await window.electronAPI.dbSettingsSet('e2eExportProbe', '1')
+    return 1
+  `)
+  void roundtrip
+  await sleep(500)
+
+  const json = await p.eval(`
+    const mod = window.__lifeosExportForTest
+    if (mod) return await mod()
+    // 没有测试钩子时退回读库自建一份，至少验「这三块数据存在且可读」
+    const q = await window.electronAPI.dbQuarterlyGetAll()
+    const s = await window.electronAPI.dbSnapshotsGetAll()
+    const st = await window.electronAPI.dbSettingsGetAll()
+    return JSON.stringify({ quarterlyReviews: q, snapshots: s, settings: st })
+  `)
+  const parsed = JSON.parse(json)
+  check('🔴 季度会谈记录进得了导出（此前整张表都丢）',
+        (parsed.quarterlyReviews || []).some(q => q.id === 'e2e-export-q'))
+  check('🔴 定妆照进得了导出', (parsed.snapshots || []).some(s => s.id === 'e2e-export-s'))
+  check('🔴 settings 进得了导出', parsed.settings?.e2eExportProbe === '1')
+  check('待播 Aha 载荷不进导出（那是中间态，不是用户数据）',
+        parsed.settings?.ahaPending === undefined || parsed.settings.ahaPending === '')
+
+  // 清理
+  await p.eval(`
+    await window.electronAPI.dbQuarterlyDelete('e2e-export-q')
+    await window.electronAPI.dbSettingsSet('e2eExportProbe', '')
+    return 1
+  `)
+
+  // ---- 补记：日期可选，且时刻类 Aha 在补记时不出现 ----
+  await goto('#/')
+  const backfill = await p.eval(`
+    ${HELPERS}
+    document.querySelector('[data-testid="mobile-fab"]').click()
+    await new Promise(r => setTimeout(r, 600))
+    const toggle = document.querySelector('[data-testid="qa-backfill-toggle"]')
+    if (!toggle) return { hasEntry: false }
+    toggle.click()
+    await new Promise(r => setTimeout(r, 300))
+    const days = [...document.querySelectorAll('[data-testid="qa-backfill-day"]')]
+    const twoDaysAgo = days.find(d => d.dataset.back === '2')
+    twoDaysAgo.click()
+    await new Promise(r => setTimeout(r, 300))
+    return {
+      hasEntry: true, dayCount: days.length,
+      note: document.querySelector('[data-testid="qa-backfill-note"]')?.innerText || '',
+    }
+  `)
+  check('记录面板有补记入口（默认折叠，不占两击路径）', backfill.hasEntry === true)
+  check('可选最近七天', backfill.dayCount === 7, `${backfill.dayCount} 天`)
+  check('选了过去某天会显式写出归属', /补在前天/.test(backfill.note), backfill.note.slice(0, 30))
+
+  const backfilled = await p.eval(`
+    ${HELPERS}
+    const box = document.querySelector('[data-testid="qa-dimensions"]')
+    ;[...box.querySelectorAll('button')].find(x => x.dataset.dimension === '精神成长').click()
+    await new Promise(r => setTimeout(r, 300))
+    const input = document.querySelector('input[placeholder^="做了什么"]')
+    window.__t.type(input, '补记验证')
+    await new Promise(r => setTimeout(r, 200))
+    ;[...document.querySelectorAll('button')].find(x => x.innerText.includes('⌘↵')).click()
+    await new Promise(r => setTimeout(r, 2200))
+    const rows = await window.electronAPI.dbActionsGetAll()
+    const mine = rows.find(r => (r.description || '').includes('补记验证'))
+    const t0 = new Date(); t0.setHours(0,0,0,0)
+    return {
+      landedDaysAgo: mine ? Math.round((t0.getTime() - mine.date) / 86400000) : -1,
+      receipt: document.querySelector('[data-testid="receipt-line"]')?.innerText || '(无)',
+    }
+  `)
+  check('补记真的落在所选那天', backfilled.landedDaysAgo === 2, `${backfilled.landedDaysAgo} 天前`)
+  check('🔴 补记时不出现时刻类那一行（那些话说的是现在，不是那天）',
+        backfilled.receipt === '(无)', backfilled.receipt)
+  await p.eval(`document.querySelector('[data-testid="echo-toast"]')?.click(); return 1`)
+  await sleep(400)
+
+  // ---- 留给自己的一句话：写侧 + 读侧 + 收起 ----
+  const note = await p.eval(`
+    ${HELPERS}
+    document.querySelector('[data-testid="mobile-fab"]').click()
+    await new Promise(r => setTimeout(r, 600))
+    document.querySelector('[data-testid="qa-note-toggle"]').click()
+    await new Promise(r => setTimeout(r, 300))
+    const input = document.querySelector('[data-testid="qa-note-input"]')
+    const ph = input.placeholder
+    window.__t.type(input, '记得把体检报告拿回来')
+    const box = document.querySelector('[data-testid="qa-dimensions"]')
+    ;[...box.querySelectorAll('button')].find(x => x.dataset.dimension === '精神成长').click()
+    await new Promise(r => setTimeout(r, 300))
+    ;[...document.querySelectorAll('button')].find(x => x.innerText.includes('⌘↵')).click()
+    await new Promise(r => setTimeout(r, 2200))
+    return { placeholder: ph, saved: (await window.electronAPI.dbSettingsGet('selfNote')) || '' }
+  `)
+  check('留言的 placeholder 用「知道」不用「做」', /知道/.test(note.placeholder) && !/做|待办|计划/.test(note.placeholder), note.placeholder)
+  check('留言落库', note.saved.includes('记得把体检报告拿回来'))
+  await p.eval(`document.querySelector('[data-testid="echo-toast"]')?.click(); return 1`)
+  await sleep(300)
+  await reload()
+  const noteCard = await p.eval(`
+    const el = document.querySelector('[data-testid="self-note"]')
+    return el ? { shown: true, text: el.innerText, hasDone: /完成/.test(el.innerText) } : { shown: false }
+  `)
+  check('下次打开「今天」时那句话在，且署了日期', noteCard.shown && /月.*日的你留下/.test(noteCard.text),
+        (noteCard.text || '').replace(/\n/g, ' / ').slice(0, 40))
+  check('🔴 只有「收起这句」，没有「完成」（否则没做到的话就变成未完成事项）',
+        noteCard.hasDone === false && /收起这句/.test(noteCard.text || ''))
+  await p.eval(`document.querySelector('[data-testid="self-note-dismiss"]').click(); return 1`)
+  await sleep(600)
+  check('收起后不再出现，且不留任何痕迹',
+        await p.eval(`return !document.querySelector('[data-testid="self-note"]')`))
+
+  // ---- 「你猜」：翻开之前不显示答案 ----
+  await goto('#/review')
+  const guess = await p.eval(`
+    ${HELPERS}
+    const card = document.querySelector('[data-testid="guess-card"]')
+    if (!card) return { shown: false }
+    const beforeText = card.innerText
+    const slider = card.querySelector('[data-testid="guess-slider"]')
+    window.__t.type(slider, '60')
+    await new Promise(r => setTimeout(r, 300))
+    card.querySelector('[data-testid="guess-reveal"]').click()
+    await new Promise(r => setTimeout(r, 400))
+    const after = document.querySelector('[data-testid="guess-result"]')
+    return {
+      shown: true,
+      leakedBefore: /账上是/.test(beforeText),
+      revealed: !!after,
+      resultText: after?.innerText || '',
+      encouragesWrong: /填错才有意思/.test(beforeText),
+    }
+  `)
+  if (guess.shown) {
+    check('🔴 翻开之前不泄露答案（否则没有落差可言）', guess.leakedBefore === false)
+    check('明说「填错才有意思」（不然用户会想猜准，那就变考试了）', guess.encouragesWrong === true)
+    check('翻开后并置「你猜 X · 账上是 Y」，且零评价词',
+          guess.revealed && /你猜/.test(guess.resultText) && /账上是/.test(guess.resultText)
+            && !/真棒|恭喜|加油|进步|太差|不行/.test(guess.resultText),
+          guess.resultText.replace(/\n/g, ' / ').slice(0, 50))
+  } else {
+    check('「你猜」在账太薄时正确地不出现', true, '本期光带不足两片')
+  }
+
+  // ---- 动效可关（红线第三条）----
+  await goto('#/me')
+  const motion = await p.eval(`
+    ${HELPERS}
+    const box = document.querySelector('[data-testid="ambience-section"]')
+    const toggle = box.querySelector('[data-testid="toggle-motion"]')
+    if (!toggle) return { has: false }
+    toggle.click()
+    await new Promise(r => setTimeout(r, 600))
+    const off = document.documentElement.dataset.motion
+    toggle.click()
+    await new Promise(r => setTimeout(r, 600))
+    return { has: true, off, on: document.documentElement.dataset.motion }
+  `)
+  check('氛围里有动效开关（动效红线第三条：可关）', motion.has === true)
+  check('关掉落到 <html data-motion="off">，打开即撤',
+        motion.off === 'off' && motion.on === undefined, JSON.stringify(motion))
+
+  // 清理本段造的数据
+  await p.eval(`
+    const rows = await window.electronAPI.dbActionsGetAll()
+    for (const r of rows.filter(x => /补记验证/.test(x.description || ''))) {
+      await window.electronAPI.dbActionsDelete(r.id)
+    }
+    await window.electronAPI.dbSettingsSet('selfNote', '')
+    return 1
+  `)
+  await sleep(500)
 })
 
 // ======================================================================

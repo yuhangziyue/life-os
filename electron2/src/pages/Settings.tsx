@@ -7,6 +7,7 @@ import { POSITIONING, APP_VERSION, ABOUT_PROMISES, ABOUT_PROMISES_WEB, ABOUT_DIS
 import { isWebBuild, webStorageStatus, storagePromiseLines } from '../services/storage'
 import { PetalIntentEditor } from '../components/PetalIntentEditor'
 import { AhaShowcase } from '../components/AhaShowcase'
+import { DemoGardenSwitch } from '../components/DemoGardenSwitch'
 import { gardenBirth } from '../engine/quarterly'
 
 /** AI 配置入口开关：AI 能力达标（50 条 eval + ≥90% 准确率 + 建议式交互）前不对用户露出 */
@@ -88,6 +89,9 @@ export function Settings() {
           <h1 className="text-2xl font-light tracking-wide">我</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">偏好与设置 · 我的数据与承诺</p>
         </div>
+
+        {/* 演示版的出口放第一张卡（A5）：藏起来的出口等于没有 */}
+        {isWebBuild() && <DemoGardenSwitch />}
 
         {/* 我是谁。没有头像、没有昵称 —— 没有账号就不假装有 */}
         <div className="card space-y-3" data-testid="identity-card">
@@ -200,6 +204,21 @@ export function Settings() {
               checked={ambience.trail}
               onChange={e => setAmbience({ trail: e.target.checked })}
               data-testid="toggle-trail"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm">页面过渡与光效</div>
+              <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                换页时的淡入、以及记一笔之后那一屏的动画。关掉之后只留文字与终态
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              className="w-4 h-4"
+              checked={ambience.motion}
+              onChange={e => setAmbience({ motion: e.target.checked })}
+              data-testid="toggle-motion"
             />
           </label>
           <div className="pt-3 border-t border-[var(--border)]">

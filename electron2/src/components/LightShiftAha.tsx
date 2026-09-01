@@ -127,8 +127,12 @@ function LightRiverFrame({ shift, stampedAt, onClose }: {
   const lawSeen = useStore(s => s.ahaLawSeen)
   const markAhaLawSeen = useStore(s => s.markAhaLawSeen)
 
+  // 「可关」是动效红线的第三条：系统级 reduced-motion 与用户在氛围里关掉动效，
+  // 走**同一条降级路径** —— 位移仍然被画出来（静态虚线箭头），只是不再补间
   const reduced = useMemo(
-    () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+    () =>
+      (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) ||
+      (typeof document !== 'undefined' && document.documentElement.dataset.motion === 'off'),
     [],
   )
 

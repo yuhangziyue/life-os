@@ -106,7 +106,12 @@ export function FlowerChart({
       // 焦点是加法照明（多一道金边），不是减法审判（把别人变灰）。e2e 有取色断言守这条。
       // 沉睡 alpha 走 CSS token（v3.3 T5）：暗底 0.15 够看，白底(bloom)必须提到 0.24——
       // 看不见的花瓣等于账本缺页，那是功能性失效，不是美化问题。
-      let alpha = v.dormant ? dormantAlpha : Math.min(0.32 + v.recentCount * 0.09, 0.8)
+      // 活跃上限 0.8 → 0.9（v3.6.2，报告台账 R2 的前一半）：
+      // 原来 6 条记录就到顶（0.32 + 6×0.09 = 0.86 → 截到 0.8），顶部分辨率浪费了。
+      // 🔴 R2 的后一半「这片花瓣在慢慢合拢……」提示**按圆桌裁决砍掉** ——
+      //    它离催办只有一步，而写不出不催办的版本就不该上（台账原话）。
+      //    「合着」这个状态已经由花瓣形态本身说清了，不需要再补一句话去提醒。
+      let alpha = v.dormant ? dormantAlpha : Math.min(0.32 + v.recentCount * 0.09, 0.9)
       const widthFactor = v.dormant ? 0.5 : 1
       // 聚光（仅会谈第二幕逐瓣打分时）：这是临时的镜头语言，不是常态视觉
       if (spotlightId && dim.id !== spotlightId) alpha *= 0.35

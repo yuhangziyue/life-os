@@ -4,6 +4,7 @@ import { calculateScoreInRange } from '../engine/scoring'
 import { pickReviewQuestions } from '../content/reviewQuestions'
 import { MOODS } from '../models/action'
 import { SubPageHeader } from '../components/SubPageHeader'
+import { GuessCard } from '../components/GuessCard'
 
 export function ReviewPage() {
   const dimensions = useEnabledDimensions()
@@ -111,6 +112,15 @@ export function ReviewPage() {
             </button>
           ))}
         </div>
+
+        {/* 「你猜」：必须在看到账之前问，否则就没有落差可言（v3.6.2） */}
+        <GuessCard
+          dimensions={dimensions}
+          actions={actions}
+          periodStart={period.start}
+          periodEnd={period.end}
+          periodWord={activeTab === 'week' ? '这一周' : activeTab === 'month' ? '这个月' : '这一年'}
+        />
 
         {/* 自动摘要 */}
         <div className="card">

@@ -6,6 +6,8 @@ import { LightBand } from '../components/LightBand'
 import { GardenTasks } from '../components/GardenTasks'
 import { ActionRow } from '../components/ActionRow'
 import { ReturnCard } from '../components/ReturnCard'
+import { MoodStream } from '../components/MoodStream'
+import { SelfNoteCard } from '../components/SelfNoteCard'
 import { startOfToday } from '../engine/scoring'
 import { isEarly, isNight } from '../engine/ahaGate'
 
@@ -86,6 +88,9 @@ export function Today() {
           <LightBand dimensions={dimensions} actions={actions} label="这周的光" />
         </div>
 
+        {/* 几天前的自己留下的那句话。**不置顶** —— 置顶就是待办位（小艾的"退一步"） */}
+        <SelfNoteCard />
+
         {/* ① 推荐我做的 */}
         <DailyGlance />
         <GardenTasks />
@@ -124,6 +129,9 @@ export function Today() {
             </div>
           )}
         </div>
+
+        {/* 感受流（R3）：近 7 天至少 3 天记过感受才出现。只呈现，不解读 */}
+        <MoodStream />
 
         {/* ③ 最近的记录 */}
         {recent.length > 0 && (

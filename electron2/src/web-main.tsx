@@ -10,6 +10,7 @@ import App from './App'
 import './styles/globals.css'
 import { createWebBackend, storageLabel } from './db/webAdapter'
 import { buildDemoSnapshot } from './db/demoSeed'
+import { buildEmptySnapshot } from './db/emptySeed'
 import { initWebStorageStatus } from './services/storage'
 
 window.addEventListener('error', e => console.error('[未捕获错误]', e.message, e.error))
@@ -27,6 +28,22 @@ async function boot() {
   // 一个 API 调用换来 Chrome/Edge 的持久配额（不再被存储压力驱逐）；
   // Safari 上必然 false，那里唯一的办法是「添加到主屏幕」，文案会照实说。
   await initWebStorageStatus(backend.storageKind)
+
+  /**
+   * 演示版的两条路径（v3.6.2，销 A5）。挂在 window 上而不是走 store ——
+   * 它们要**换掉整个库再重启**，走 store 反而要处理一堆中间态。
+   * 桌面版不存在这两个函数，UI 侧用 isWebBuild() 判断，不会误露。
+   */
+  window.__lifeosDemo = {
+    async startMyGarden() {
+      await backend.reseed(buildEmptySnapshot)
+      location.reload()
+    },
+    async restoreDemo() {
+      await backend.reseed(buildDemoSnapshot)
+      location.reload()
+    },
+  }
 
   // 页面隐藏时强制落盘：写入是攒到微任务末尾批量做的，
   // 用户点完「记一笔」立刻关标签页的话，不 flush 就丢那一笔。
@@ -96,10 +113,8 @@ function mountDemoBadge(kind: Parameters<typeof storageLabel>[0]) {
   wrap.querySelector('#demo-badge-toggle')!.addEventListener('click', () => {
     panel.hidden = !panel.hidden
   })
-  wrap.querySelector('#demo-reset')!.addEventListener('click', async () => {
-    // 走 shim 的 dbClearAll —— 演示版把它实现成「清库 + 重灌样板数据」
-    await window.electronAPI.dbClearAll()
-    location.reload()
+  wrap.querySelector('#demo-reset')!.addEventListener('click', () => {
+    void window.__lifeosDemo?.restoreDemo()
   })
 }
 

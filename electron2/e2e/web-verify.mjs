@@ -308,9 +308,9 @@ try {
   `)
   check('底栏印章与标签上下排（宽窄屏都是）',
         tabLayout.dir === 'column' && tabLayout.stacked === true, JSON.stringify(tabLayout))
-  check('八种 Aha 全部在场（四种定格帧 + 四种回执文案）',
-        showcase.kinds?.length === 8, (showcase.kinds || []).join(' / '))
-  check('四种定格帧都能当场演一遍', showcase.playable === 4, `${showcase.playable} 个可播`)
+  check('九种 Aha 全部在场（五种定格帧 + 四种回执文案）',
+        showcase.kinds?.length === 9, (showcase.kinds || []).join(' / '))
+  check('五种定格帧都能当场演一遍', showcase.playable === 5, `${showcase.playable} 个可播`)
   check('展柜如实说明「真实使用时它们是稀有的」',
         /稀有/.test(showcase.text || ''), '')
 
@@ -336,8 +336,8 @@ try {
       played: await window.electronAPI.dbEventsHas('aha_played'),
     }
   `)
-  check('四种定格帧逐个都能出画面',
-        played.out?.length === 4 && played.out.every(o => o.shown && o.fact.length > 0),
+  check('五种定格帧逐个都能出画面',
+        played.out?.length === 5 && played.out.every(o => o.shown && o.fact.length > 0),
         (played.out || []).map(o => o.fact.slice(0, 12)).join(' | '))
   check('🔴 展柜零副作用：不写待播载荷、不占当天额度',
         played.pending === '' && played.played === false,
@@ -418,6 +418,72 @@ try {
   check('演示浮标 + 重置入口在位', badge.toggle && badge.reset, JSON.stringify(badge))
   await sleep(300)
   await page.shot(path.join(SHOTS, '演示浮标.png'))
+
+  // ---- A5：演示态出口（v3.6.2）----
+  // 放在最后，因为它会清掉演示数据；验完再灌回去
+  const switchCard = await page.eval(`
+    location.hash = '#/me'
+    await new Promise(r => setTimeout(r, 900))
+    const el = document.querySelector('[data-testid="demo-switch"]')
+    return el ? { shown: true, text: el.innerText, hasBtn: !!document.querySelector('[data-testid="demo-start-mine"]') } : { shown: false }
+  `)
+  check('演示版第一张卡就是「这是别人的花园」出口（藏起来的出口等于没有）',
+        switchCard.shown && switchCard.hasBtn, (switchCard.text || '').slice(0, 30).replace(/\n/g, '/'))
+  check('出口文案是陈述不是口号（无「开始你的旅程」「立即体验」这类）',
+        !/旅程|立即|马上|快来|体验一下/.test(switchCard.text || ''), '')
+
+  const mine = await page.eval(`
+    document.querySelector('[data-testid="demo-start-mine"]').click()
+    await new Promise(r => setTimeout(r, 400))
+    document.querySelector('[data-testid="demo-start-confirm"]').click()
+    return 1
+  `)
+  void mine
+  await sleep(3200)
+  for (let i = 0; i < 30; i++) {
+    if (await page.eval('return !!window.electronAPI')) break
+    await sleep(200)
+  }
+  const empty = await page.eval(`
+    const acts = await window.electronAPI.dbActionsGetAll()
+    const dims = await window.electronAPI.dbDimensionsGetAll()
+    const branches = await window.electronAPI.dbBranchesGetAll()
+    const q = await window.electronAPI.dbQuarterlyGetAll()
+    const onb = await window.electronAPI.dbSettingsGet('onboardingDone')
+    return {
+      actions: acts.length, dims: dims.length, branches: branches.length, quarterly: q.length,
+      onboardingDone: onb,
+      onboardingOpen: !!document.querySelector('[data-testid="onboarding"]'),
+      scores: dims.map(d => d.currentScore),
+      targets: dims.filter(d => d.targetScore != null).length,
+    }
+  `)
+  check('「种我自己的」清空全部记录与会谈', empty.actions === 0 && empty.quarterly === 0,
+        `actions=${empty.actions} 会谈=${empty.quarterly}`)
+  check('八维度骨架与分支树保留（那是产品定义，不是演示数据）',
+        empty.dims === 8 && empty.branches === 128, `dims=${empty.dims} branches=${empty.branches}`)
+  check('分数回到种子值，且一片都没有预设目标',
+        empty.scores.every(s => s === 3) && empty.targets === 0,
+        `scores=${[...new Set(empty.scores)].join(',')} 有目标=${empty.targets}`)
+  check('🔴 清空后走首启三幕（第三幕那份「第一份代价快照」正是这条路径的理由）',
+        empty.onboardingDone !== '1' && empty.onboardingOpen === true,
+        `onboardingDone=${empty.onboardingDone} 引导=${empty.onboardingOpen}`)
+  await page.shot(path.join(SHOTS, '演示版-种我自己的.png'))
+
+  // 灌回演示数据，别把演示站留成空花园
+  await page.eval(`
+    document.querySelector('[data-testid="onboarding"] button')?.click()
+    await new Promise(r => setTimeout(r, 300))
+    await window.__lifeosDemo.restoreDemo()
+    return 1
+  `)
+  await sleep(3200)
+  for (let i = 0; i < 30; i++) {
+    if (await page.eval('return !!window.electronAPI')) break
+    await sleep(200)
+  }
+  check('「恢复演示数据」把样板花园灌回来了',
+        (await page.eval(`return (await window.electronAPI.dbActionsGetAll()).length`)) > 40)
 
   // ---- 零控制台错误 ----
   const errs = page.consoleLogs.filter(l => l.type === 'error').map(l => l.text)

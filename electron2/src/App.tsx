@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { useStore } from './stores/useStore'
 import { applyTheme } from './services/theme'
-import { applyCursorSetting } from './services/ambience'
+import { applyCursorSetting, applyMotionSetting } from './services/ambience'
 import { getSetting } from './db'
 import { TabBar } from './components/TabBar'
 import { QuickAddPanel } from './components/QuickAddPanel'
@@ -65,6 +65,7 @@ export default function App() {
   const setQuickAddOpen = useStore(s => s.setQuickAddOpen)
   const theme = useStore(s => s.theme)
   const cursorEnabled = useStore(s => s.ambience.cursor)
+  const motionEnabled = useStore(s => s.ambience.motion)
   const onboardingOpen = useStore(s => s.onboardingOpen)
   const setOnboardingOpen = useStore(s => s.setOnboardingOpen)
   const quarterlySession = useStore(s => s.quarterlySession)
@@ -73,6 +74,8 @@ export default function App() {
   useEffect(() => { applyTheme(theme) }, [theme])
   // 主题化指针开关落到 <html data-cursor>
   useEffect(() => { applyCursorSetting(cursorEnabled) }, [cursorEnabled])
+  // 动效开关：红线第三条「可关」此前没覆盖换页入场与 Aha
+  useEffect(() => { applyMotionSetting(motionEnabled) }, [motionEnabled])
 
   const runLoad = () => {
     setPhase('loading')

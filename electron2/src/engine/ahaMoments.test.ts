@@ -7,9 +7,10 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  detectStageShift, detectAwaken, isDailyFirst,
-  stageShiftLines, awakenLine, composeIntentSet, intentSetLines,
-  AWAKEN_AFTER_DAYS,
+  detectStageShift, detectAwaken, detectWeekLight, isDailyFirst,
+  stageShiftLines, awakenLine, weekLightLines, composeIntentSet, intentSetLines,
+  parseSelfNote, selfNoteLead,
+  AWAKEN_AFTER_DAYS, NOTE_TTL_DAYS, NOTE_PLACEHOLDER,
   DAILY_FIRST_LINE, PETAL_FIRST_LINE, NIGHT_LINE, EARLY_LINE,
 } from './ahaMoments'
 import type { Action } from '../models/action'
@@ -151,5 +152,69 @@ describe('④ 立下意图', () => {
   it('只立了约定没写目标时，不编造一个目标出来', () => {
     const lines = intentSetLines(composeIntentSet(dim({ pactTiming: '周三', pactText: '走二十分钟' })))
     expect(lines[0]).not.toMatch(/\d/)
+  })
+})
+
+describe('第 7 天「一周的光」', () => {
+  const bornAt = day(9)   // 花园九天前开的
+
+  it('花园不满七天不出现 —— 那时候还谈不上"一周的形状"', () => {
+    const acts = [0, 1, 2, 3].map(o => act({ id: `w${o}`, date: day(o) }))
+    expect(detectWeekLight({ actions: acts, gardenBornAt: day(3), now: NOW })).toBeNull()
+  })
+
+  it('七天里不足四天有记录不出现 —— 两三天的形状还是偶然', () => {
+    const acts = [0, 1, 2].map(o => act({ id: `w${o}`, date: day(o) }))
+    expect(detectWeekLight({ actions: acts, gardenBornAt: bornAt, now: NOW })).toBeNull()
+  })
+
+  it('满七天且四天有记录才出现，并如实报出天数', () => {
+    const acts = [0, 1, 3, 5].map(o => act({ id: `w${o}`, date: day(o) }))
+    const r = detectWeekLight({ actions: acts, gardenBornAt: bornAt, now: NOW })
+    expect(r).toEqual({ daysWithRecord: 4 })
+  })
+
+  it('同一天记多条只算一天', () => {
+    const acts = [
+      act({ id: 'a', date: day(0) }), act({ id: 'b', date: day(0) }),
+      act({ id: 'c', date: day(1) }), act({ id: 'd', date: day(2) }),
+    ]
+    expect(detectWeekLight({ actions: acts, gardenBornAt: bornAt, now: NOW })).toBeNull()
+  })
+
+  it('🔴 文案说的是「证据够了」，不是「你做到了」', () => {
+    const all = weekLightLines({ daysWithRecord: 5 }).join(' ')
+    expect(all).toContain('形状')
+    expect(all).not.toMatch(/坚持|连续|不错|真棒|恭喜|加油|做得好/)
+    expect(all).not.toMatch(/[!！]/)
+  })
+})
+
+describe('「留给自己的一句话」', () => {
+  it('空的 / 坏 JSON 都当没有', () => {
+    expect(parseSelfNote(null)).toBeNull()
+    expect(parseSelfNote('')).toBeNull()
+    expect(parseSelfNote('不是 json')).toBeNull()
+    expect(parseSelfNote(JSON.stringify({ text: '', at: NOW }))).toBeNull()
+  })
+
+  it('七天内的留言读得出来', () => {
+    const raw = JSON.stringify({ text: '先把体检报告约了', at: day(3) })
+    expect(parseSelfNote(raw, NOW)?.text).toBe('先把体检报告约了')
+  })
+
+  it('🔴 满七天就真的消失 —— 时间是唯一的解药，否则它变成钉在首屏上的指控', () => {
+    expect(parseSelfNote(JSON.stringify({ text: '一定要去体检', at: day(NOTE_TTL_DAYS) }), NOW)).toBeNull()
+    expect(parseSelfNote(JSON.stringify({ text: '一定要去体检', at: day(NOTE_TTL_DAYS - 1) }), NOW)).not.toBeNull()
+  })
+
+  it('署名是日期，把它从待办变回一封来自过去自己的信', () => {
+    const lead = selfNoteLead({ text: 'x', at: day(2) })
+    expect(lead).toMatch(/\d+月\d+日的你留下/)
+  })
+
+  it('🔴 placeholder 的动词是「知道」不是「做」——「知道」不构成任务', () => {
+    expect(NOTE_PLACEHOLDER).toContain('知道')
+    expect(NOTE_PLACEHOLDER).not.toMatch(/做|完成|待办|计划|提醒/)
   })
 })

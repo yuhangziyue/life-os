@@ -3,7 +3,7 @@ import { useStore, useEnabledDimensions } from '../stores/useStore'
 import { LightShiftAha } from './LightShiftAha'
 import { composeLightShift, type AhaPayload } from '../engine/lightShift'
 import {
-  awakenLine, stageShiftLines, composeIntentSet, intentSetLines,
+  awakenLine, stageShiftLines, composeIntentSet, intentSetLines, weekLightLines,
   DAILY_FIRST_LINE, PETAL_FIRST_LINE, NIGHT_LINE, EARLY_LINE,
 } from '../engine/ahaMoments'
 import { lightShares } from '../engine/impression'
@@ -113,6 +113,15 @@ export function AhaShowcase() {
             lastAt: now - 26 * DAY_MS,
           }),
         },
+      },
+      {
+        key: 'week_light',
+        title: '一周的光',
+        when: '花园满七天、且这七天里至少四天有记录（终身一次）',
+        payload: (() => {
+          const l = weekLightLines({ daysWithRecord: 5 })
+          return { kind: 'stage_up' as const, at: now, headline: l[0], lines: l.slice(1), colorHex: rich.colorHex }
+        })(),
       },
       {
         key: 'intent_set',

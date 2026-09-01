@@ -21,11 +21,24 @@ cleanup() {
   sleep 2
 }
 
+# 挂账 #8：dev/e2e 退出时不收子进程，实测积到过 37 个僵尸 vite（最老 7 天），
+# 会让下一次 `npm run dev` 的 Electron 去加载几天前的旧服务、而且不报错。
+# 这里装一个 trap：本脚本自己起的 vite 与 Electron，退出（含 Ctrl-C / 异常）时一并收掉。
+VITE_PID=""
+on_exit() {
+  local code=$?
+  [ -n "$VITE_PID" ] && kill "$VITE_PID" 2>/dev/null
+  cleanup
+  exit $code
+}
+trap on_exit EXIT INT TERM
+
 case "$MODE" in
   dev)
     if ! curl -s -o /dev/null http://127.0.0.1:5173; then
       echo "[e2e] 启动 vite dev server..."
-      (npx vite --port 5173 > /tmp/lifeos-vite.log 2>&1 &)
+      npx vite --port 5173 > /tmp/lifeos-vite.log 2>&1 &
+      VITE_PID=$!
       sleep 5
     fi
     cleanup

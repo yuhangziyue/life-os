@@ -3,6 +3,8 @@ import { useStore, useEnabledDimensions } from '../stores/useStore'
 import { QUALITY_IMPACT, QUALITY_LABELS, MOODS } from '../models/action'
 import type { ActionQuality } from '../models/action'
 import { startOfToday, dimensionVitality } from '../engine/scoring'
+import { NOTE_PLACEHOLDER } from '../engine/ahaMoments'
+import { setSetting } from '../db'
 
 interface QuickAddPanelProps {
   open: boolean
@@ -52,6 +54,28 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
   const nowHour = new Date().getHours()
   const belongsToYesterday = nowHour >= 0 && nowHour < 4
 
+  /**
+   * 补记（v3.6.2）—— 判据在 v3.6 就先落了（`isBackfill` + 单测 + 时刻类 Aha 屏蔽），
+   * 这一轮补上入口。为什么是强需求：周末补一批、晚上回想今天做过什么，
+   * 都是真实路径；此前 `date` 硬编码今天，那些账只能记成今天，账本就不诚实了。
+   *
+   * 刻意做成**折叠的一行**，不是常驻的日期控件：
+   * 绝大多数记录是当下发生的，把日期摆在主路径上会让「两击完成」变成三击。
+   */
+  const defaultDate = belongsToYesterday ? startOfToday() - 86400000 : startOfToday()
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const [pickedDate, setPickedDate] = useState<number>(defaultDate)
+  const isBackfilling = pickedDate !== defaultDate
+  const dateLabel = (ts: number) => {
+    const diff = Math.round((startOfToday() - ts) / 86400000)
+    if (diff === 0) return '今天'
+    if (diff === 1) return '昨天'
+    if (diff === 2) return '前天'
+    return new Date(ts).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+  }
+
   // 「再记一条」带过来的预选维度
   useEffect(() => {
     if (open && quickAddPreset) {
@@ -88,7 +112,7 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
       || (branch ? branch.name : `为「${dim?.name ?? '这片花瓣'}」做了一件小事`)
 
     await addAction({
-      date: belongsToYesterday ? startOfToday() - 86400000 : startOfToday(),
+      date: pickedDate,
       descriptionText: text,
       impact: QUALITY_IMPACT[quality],
       quality,
@@ -98,7 +122,16 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
       branchId: branchId || null,
     })
 
+    // 留给自己的一句话（可选）。写了就存，没写就当没这回事
+    if (note.trim()) {
+      try { await setSetting('selfNote', JSON.stringify({ text: note.trim(), at: Date.now() })) }
+      catch { /* 存不下不挡记录 */ }
+    }
+    setNote('')
+    setNoteOpen(false)
     setDescription('')
+    setPickedDate(defaultDate)
+    setBackfillOpen(false)
     setBranchId('')
     setQuality('normal')
     setMood('')
@@ -202,6 +235,46 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
           autoFocus={!narrow}
         />
 
+        {/* 补记（可选，默认折叠）。当前不是今天时，那一行改成显式的归属提示 */}
+        <div className="mb-3" data-testid="qa-backfill">
+          {!backfillOpen && !isBackfilling ? (
+            <button
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+              data-testid="qa-backfill-toggle"
+              onClick={() => setBackfillOpen(true)}
+            >
+              + 这件事不是今天发生的（可选）
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-[var(--text-muted)]">记在</span>
+              {[0, 1, 2, 3, 4, 5, 6].map(back => {
+                const ts = startOfToday() - back * 86400000
+                return (
+                  <button
+                    key={back}
+                    className={`qa-chip qa-chip-sm ${pickedDate === ts ? 'is-on' : ''}`}
+                    data-testid="qa-backfill-day"
+                    data-back={back}
+                    onClick={() => setPickedDate(ts)}
+                  >
+                    {dateLabel(ts)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {isBackfilling && (
+            <p className="qa-belongs mt-2" data-testid="qa-backfill-note">
+              这一笔补在{dateLabel(pickedDate)}，账上跟着变。
+              <br />
+              <span className="text-[var(--text-muted)]">
+                当天的第一笔、深夜这类跟「此刻」有关的话不会出现 —— 那些说的是现在，不是那天。
+              </span>
+            </p>
+          )}
+        </div>
+
         {/* 感受随手记（可选，默认折叠） */}
         <div className="mb-3" data-testid="mood-picker">
           {!moodOpen ? (
@@ -229,6 +302,29 @@ export function QuickAddPanel({ open, onClose }: QuickAddPanelProps) {
                 {mood ? MOODS.find(m => m.key === mood)?.label : '不填也完全可以'}
               </span>
             </div>
+          )}
+        </div>
+
+        {/* 留给自己的一句话（可选，默认折叠）。
+            placeholder 刻意把动词从「做」移到「知道」——「知道」不构成任务。
+            这是零校验的软引导；产品无权规定用户能对自己说什么话（Lisa 三轮）。 */}
+        <div className="mb-3" data-testid="qa-note">
+          {!noteOpen ? (
+            <button
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+              data-testid="qa-note-toggle"
+              onClick={() => setNoteOpen(true)}
+            >
+              + 留一句给下次打开这里的自己（可选）
+            </button>
+          ) : (
+            <input
+              className="input"
+              placeholder={NOTE_PLACEHOLDER}
+              value={note}
+              data-testid="qa-note-input"
+              onChange={e => setNote(e.target.value)}
+            />
           )}
         </div>
 

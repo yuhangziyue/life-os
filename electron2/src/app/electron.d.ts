@@ -42,6 +42,9 @@ export interface ElectronAPI {
   dbReviewsDelete: (id: string) => Promise<boolean>
 
   dbSettingsGet: (key: string) => Promise<string | null>
+  /** 全量读 settings（导出用）。刻意不做「导出哪几个 key」的白名单 ——
+   *  白名单是个沉默的陷阱：加了新 key 忘了加进去，不会报错，只是永远导不出去 */
+  dbSettingsGetAll: () => Promise<Record<string, string>>
   dbSettingsSet: (key: string, value: string) => Promise<boolean>
   dbSnapshotsGetAll: () => Promise<any[]>
   dbSnapshotsAdd: (row: any) => Promise<boolean>

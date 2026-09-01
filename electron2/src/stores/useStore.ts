@@ -16,9 +16,10 @@ import { calculateScore, overallScore, coveredDimensions, startOfToday, dimensio
 import { composeEcho, composeCompleteEcho, type Echo } from '../engine/echo'
 import { composeLightShift, LIGHT_LAW_SEEN_KEY, type AhaPayload } from '../engine/lightShift'
 import {
-  detectAwaken, detectStageShift, isDailyFirst, awakenLine, stageShiftLines,
+  detectAwaken, detectStageShift, detectWeekLight, isDailyFirst,
+  awakenLine, stageShiftLines, weekLightLines,
   composeIntentSet, intentSetLines,
-  DAILY_FIRST_LINE, PETAL_FIRST_LINE, NIGHT_LINE, EARLY_LINE,
+  DAILY_FIRST_LINE, PETAL_FIRST_LINE, NIGHT_LINE, EARLY_LINE, WEEK_LIGHT_SEEN_KEY,
 } from '../engine/ahaMoments'
 import {
   checkAhaGate, hasSampleFloor, isBackfill, isNight, isEarly, isRoughDay,
@@ -136,6 +137,8 @@ interface AppState {
   aha: AhaPayload | null
   /** 那条「总和恒为 100%」的解释是否已经说过（说一次就够） */
   ahaLawSeen: boolean
+  /** 第 7 天「一周的光」是否已经出现过（终身一次） */
+  weekLightSeen: boolean
   /** 点花瓣弹出的维度面板（v3.5 M7）；null = 没开。花瓣即导航，取代了「维度管理」那一栏 */
   dimensionSheetId: string | null
   /** 定格帧的触发时刻（进门播时用来给日期锚，小艾三轮的必要条件） */
@@ -246,6 +249,7 @@ export const useStore = create<AppState>((set, get) => ({
   echo: null,
   aha: null,
   ahaLawSeen: false,
+  weekLightSeen: false,
   dimensionSheetId: null,
   ahaStampedAt: null,
   pulseDimId: null,
@@ -272,7 +276,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Step 2: 并行加载所有数据
       LOG('loadData', 'Step 2: 并行加载数据...')
-      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen, returnSeen] = await Promise.all([
+      const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, deferUntil, deferCount, lawSeen, returnSeen, weekSeen] = await Promise.all([
         getDimensions(),
         getScoreRubrics(),
         getBranches(),
@@ -284,6 +288,7 @@ export const useStore = create<AppState>((set, get) => ({
         getSetting('quarterlyDeferCount'),
         getSetting(LIGHT_LAW_SEEN_KEY),
         getSetting('returnCardSeenAt'),
+        getSetting(WEEK_LIGHT_SEEN_KEY),
       ])
       LOG('loadData', `Step 2: 完成 - dims=${dimensions.length}, rubrics=${scoreRubrics.length}, branches=${branches.length}, goals=${goals.length}, actions=${actions.length}, reviews=${reviews.length}`)
 
@@ -313,6 +318,7 @@ export const useStore = create<AppState>((set, get) => ({
         quarterlyDefer: { until: Number(deferUntil) || 0, count: Number(deferCount) || 0 },
         ahaLawSeen: lawSeen === '1',
         returnCardDismissedAt: Number(returnSeen) || 0,
+        weekLightSeen: weekSeen === '1',
         // 待播的定格帧必须在**首帧渲染前**就算完并放进同一批 set ——
         // 进门后再算会闪一下才播，那比不播更糟（小露三轮的护栏）。
         //
@@ -600,6 +606,26 @@ export const useStore = create<AppState>((set, get) => ({
     const awaken = detectAwaken({ dimension: dim, actionsBefore: actions, now: nowTs })
 
     const candidates: { kind: AhaKind; payload: AhaPayload }[] = []
+
+    // 第 7 天「一周的光」：四个 Aha 递进线上唯一还缺的一环，终身一次
+    if (!get().weekLightSeen) {
+      const wl = detectWeekLight({
+        actions: get().actions,
+        gardenBornAt: gardenBirth(dimensions),
+        now: nowTs,
+      })
+      if (wl) {
+        const lines = weekLightLines(wl)
+        candidates.push({
+          kind: 'week_light',
+          payload: {
+            kind: 'stage_up', at: nowTs,        // 复用事实型定格帧的渲染
+            headline: lines[0], lines: lines.slice(1), colorHex: dim.colorHex,
+          },
+        })
+      }
+    }
+
     if (shift?.firstEver) {
       candidates.push({ kind: 'first_ever', payload: { kind: 'light_shift', at: nowTs, shift } })
     }
@@ -623,8 +649,13 @@ export const useStore = create<AppState>((set, get) => ({
     for (const c of candidates) {
       const gate = await checkAhaGate(c.kind, ahaDeps(), { backfill, floorOk, now: nowTs })
       if (!gate.pass) continue
-      try { await setSetting(AHA_PENDING_KEY, JSON.stringify({ ...c.payload, gateKind: c.kind })) }
-      catch { /* 攒不下就当没这回事，不挡记录路径 */ }
+      try {
+        await setSetting(AHA_PENDING_KEY, JSON.stringify({ ...c.payload, gateKind: c.kind }))
+        if (c.kind === 'week_light') {
+          await setSetting(WEEK_LIGHT_SEEN_KEY, '1')
+          set({ weekLightSeen: true })
+        }
+      } catch { /* 攒不下就当没这回事，不挡记录路径 */ }
       return                                          // 只攒第一条，剩下的丢掉
     }
   },

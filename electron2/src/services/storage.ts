@@ -33,6 +33,11 @@ declare global {
   interface Window {
     /** 只有网页版会挂这个对象；Electron 版永远是 undefined。判据是结构性的，不靠 UA */
     __lifeosWeb?: WebStorageStatus
+    /** 演示版的两条路径（v3.6.2）：种我自己的 / 恢复演示数据。桌面版没有这个对象 */
+    __lifeosDemo?: {
+      startMyGarden: () => Promise<void>
+      restoreDemo: () => Promise<void>
+    }
   }
 }
 

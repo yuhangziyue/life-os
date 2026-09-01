@@ -516,6 +516,12 @@ function logEvent(name) {
   db.prepare('INSERT OR IGNORE INTO events (name, at) VALUES (?, ?)').run(String(name), Date.now())
 }
 
+/** 全量读 settings（导出用）。见 electron.d.ts 里那段「白名单是个沉默的陷阱」 */
+function getAllSettings() {
+  const rows = db.prepare('SELECT key, value FROM settings').all()
+  return Object.fromEntries(rows.map(r => [r.key, r.value]))
+}
+
 // ---- Aha 闸门用的三个查询 + 一个清理（v3.6）----
 function hasEvent(name) {
   return !!db.prepare('SELECT 1 FROM events WHERE name = ? LIMIT 1').get(String(name))
@@ -588,7 +594,7 @@ module.exports = {
   getGoals, getGoalsByDimension, addGoal, updateGoal, deleteGoal,
   getActions, getActionsByDimension, addAction, updateAction, deleteAction,
   getReviews, addReview, updateReview, deleteReview,
-  getSetting, setSetting, getSnapshots, addSnapshot, logEvent,
+  getSetting, setSetting, getAllSettings, getSnapshots, addSnapshot, logEvent,
   hasEvent, hasEventSince, countEventsSince, clearEventsByPrefix,
   getQuarterlyReviews, upsertQuarterlyReview, deleteQuarterlyReview, setFocusDimensions,
 }

@@ -424,15 +424,25 @@ main::before {
     radial-gradient(700px 420px at 108% 112%, rgba(142, 121, 168, 0.09), transparent 70%);
 }
 
-/* 换页入场：内容像一页纸被轻轻放下 */
+/* 换页入场：内容像一页纸被轻轻放下。
+   报告台账 R1 原方案是「路由淡入淡出 200ms + 卡片 stagger 50ms + 数字翻滚」：
+     · **数字翻滚已否决** —— 它把数字变成表演，而形态才是第一语言
+     · 200ms 不合红线（慢 ≥400ms / 微 / 可关），既有的 450ms 本来就是对的，保留
+     · 位移从 8px 收到 6px（「微」），并加 both 让首帧就是起始态，不闪
+   不引 framer-motion：一个淡入不值得一个动画库。 */
 @keyframes pageIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 main > div {
-  animation: pageIn 0.45s ease-out;
+  animation: pageIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
   position: relative;
   z-index: 1;
+}
+/* 「可关」是动效红线的第三条：氛围开关关掉时，过渡一并停 */
+html[data-motion='off'] main > div { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  main > div { animation: none; }
 }
 
 /* 主题页氛围底纹：一朵跟随主题色的半透明花瓣（PetalBackdrop） */
@@ -1552,3 +1562,36 @@ html:not([data-cursor='off']) textarea {
   flex: 0 0 auto; max-width: 46%; font-size: 11px; color: var(--text-secondary);
   text-align: right; line-height: 1.5;
 }
+
+/* ---------- 感受流（R3，v3.6.2）---------- */
+.mood-stream { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mood-day { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mood-day-marks {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-height: 42px; justify-content: flex-end;
+}
+.mood-mark { font-size: 15px; line-height: 1.1; }
+/* 没记的那天不画空洞，画一条极淡的短线 —— 缺席是事实，不是缺口
+   （与光的年轮里「余影不留边界」同一条分寸） */
+.mood-blank {
+  width: 10px; height: 2px; border-radius: 1px;
+  background: var(--border-strong); opacity: 0.5;
+}
+.mood-day-label {
+  font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+
+
+/* ---------- 「你猜」（v3.6.2）---------- */
+.guess-slider { display: flex; align-items: center; gap: 12px; }
+.guess-slider input[type='range'] { flex: 1; accent-color: var(--accent); }
+.guess-num {
+  min-width: 46px; text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 15px; color: var(--text-primary);
+}
+.guess-compare {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 14px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.guess-compare b { font-weight: 500; color: var(--text-primary); }
+.guess-sep { color: var(--text-muted); }

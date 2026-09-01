@@ -42,7 +42,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 export type AhaKind =
   // 形态类：结构变了。允许在补记后触发
-  | 'first_ever' | 'stage_up' | 'light_shift' | 'rank_swap' | 'awaken'
+  | 'first_ever' | 'stage_up' | 'light_shift' | 'rank_swap' | 'awaken' | 'week_light'
   // 时刻类：此刻发生的事。补记时一律屏蔽
   | 'daily_first' | 'night_owl' | 'early_bird' | 'intent_set' | 'return_after_break'
 
@@ -50,7 +50,7 @@ const MOMENT_KINDS = new Set<AhaKind>([
   'daily_first', 'night_owl', 'early_bird', 'intent_set', 'return_after_break',
 ])
 /** 样本地板未达标时仍然放行的两类（它们不依赖占比统计） */
-const FLOOR_EXEMPT = new Set<AhaKind>(['first_ever', 'stage_up', 'awaken'])
+const FLOOR_EXEMPT = new Set<AhaKind>(['first_ever', 'stage_up', 'awaken', 'week_light'])
 
 export const FORM_COOLDOWN_DAYS = 14
 export const MOMENT_COOLDOWN_DAYS = 30
