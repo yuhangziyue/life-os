@@ -36,7 +36,12 @@ export const POSITIONING = [
 
 export const POSITIONING_ONE_LINE = POSITIONING.join('')
 
-export const APP_VERSION = 'v3.5'
+/**
+ * 版本号。**改版时必须同步 `package.json` 的 version** ——
+ * 打 tag 那天发现这两处与实际版本各差一截（package 3.2.0 / 这里 v3.5 / 实际 v3.7）。
+ * 关于页那一行是用户唯一能看到版本的地方，它说错了就没人会发现别处也错了。
+ */
+export const APP_VERSION = 'v3.7'
 
 /** 关于面板：陌生人装完第一个疑虑是「我的数据去哪了」，这一屏就是答案（信任设计，不是功能） */
 export const ABOUT_PROMISES = [

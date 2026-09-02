@@ -1,6 +1,6 @@
 {
   "name": "life-os",
-  "version": "3.2.0",
+  "version": "3.7.0",
   "description": "生命之花 · Life-OS — 把你的人生，画成一朵会呼吸的花",
   "main": "electron/main.cjs",
   "scripts": {
