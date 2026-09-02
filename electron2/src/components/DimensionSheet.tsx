@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
+import { identityLine } from '../models/dimension'
+import { Overlay } from './Overlay'
 import { dimensionVitality, scoreStage } from '../engine/scoring'
 import { QUALITY_LABELS } from '../models/action'
 
@@ -29,7 +31,11 @@ export function DimensionSheet() {
     .sort((a, b) => b.date - a.date)
   const openGoals = goals.filter(g => g.dimensionId === dim.id && g.isActive)
 
+  // v3.7：portal 到 body —— 祖先上任何 transform/filter/will-change 都会把
+  //   `position: fixed` 捕获成相对该祖先定位（实测过一次：pageIn 的 fill-mode
+  //   让弹层跑到视口外，看起来像「点了没反应」）。见 Overlay.tsx
   return (
+    <Overlay>
     <div className="sheet-scrim" onClick={close} data-testid="dimension-sheet">
       <div className="sheet-body" onClick={e => e.stopPropagation()}>
         <div className="sheet-grip" />
@@ -41,7 +47,7 @@ export function DimensionSheet() {
         </div>
 
         {dim.identity && (
-          <p className="text-xs text-[var(--text-muted)] mt-1">成为{dim.identity}的人</p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">{identityLine(dim.identity)}</p>
         )}
 
         <p className="text-sm text-[var(--text-secondary)] mt-3 leading-relaxed">
@@ -89,5 +95,6 @@ export function DimensionSheet() {
         </div>
       </div>
     </div>
+    </Overlay>
   )
 }

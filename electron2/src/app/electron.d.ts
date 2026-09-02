@@ -1,3 +1,13 @@
+/** 一条被播过的 Aha（v3.7）。lines 在库里是 JSON 字符串，DAL 已解回数组 */
+export interface AhaMomentRow {
+  id: string
+  kind: string
+  at: number
+  headline: string
+  lines: string[]
+  colorHex: string
+}
+
 export interface ElectronAPI {
   ping: () => string
 
@@ -49,6 +59,9 @@ export interface ElectronAPI {
   dbSnapshotsGetAll: () => Promise<any[]>
   dbSnapshotsAdd: (row: any) => Promise<boolean>
   dbEventsLog: (name: string) => Promise<boolean>
+  /** 那些美妙时刻（v3.7）：Aha 播过之后落一条，只增不改 */
+  dbMomentsAdd: (row: AhaMomentRow) => Promise<boolean>
+  dbMomentsGetAll: () => Promise<AhaMomentRow[]>
   /** Aha 闸门用（v3.6）：某个事件名有没有出现过 / 某时刻之后有没有 / 某时刻之后出现几次 */
   dbEventsHas: (name: string) => Promise<boolean>
   dbEventsHasSince: (name: string, sinceMs: number) => Promise<boolean>

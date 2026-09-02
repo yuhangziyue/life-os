@@ -417,6 +417,65 @@ try {
         mobile.noAside && mobile.noSideScroll, JSON.stringify(mobile))
 
   /**
+   * 🔴 弹层必须相对**视口**定位 —— 滚动之后再点，这是原来那个 bug 唯一的显形条件。
+   *
+   * 子曰报「网页版主题设置点击之后没有反应」。实测下来不是没反应：
+   *   `main > div` 上的 `pageIn` 动画写着 `animation-fill-mode: both`，
+   *   动画结束后永久保持最后一帧 `transform: translateY(0)` ——
+   *   一个恒等变换，但**它照样让那个滚动容器成为 `position: fixed` 的包含块**。
+   *   弹层于是相对容器定位：实测 rect 从 `0,0,390×844` 变成 `30,0,386×814`，
+   *   而**页面一旦往下滚，弹层就渲染在容器顶部 —— 在视口外面**。
+   *
+   * ⚠️ e2e 之前一直没抓到，因为它每次截图前都先滚到顶 ——
+   *   滚到顶时容器顶 ≈ 视口顶，弹层看起来是对的。
+   *   **所以这条断言的关键不是"点开弹层"，是"先滚下去再点"。**
+   */
+  await page.eval(`location.hash = '#/me'; return 1`)
+  await sleep(1300)
+  const sheetGeo = await page.eval(`
+    const sc = document.querySelector('.flex-1.overflow-y-auto')
+    sc.scrollTo(0, 500)
+    await new Promise(r => setTimeout(r, 400))
+    document.querySelector('[data-testid="row-theme"]').click()
+    await new Promise(r => setTimeout(r, 600))
+    const sheet = document.querySelector('[data-testid="theme-sheet"]')
+    if (!sheet) return { opened: false }
+    const r = sheet.getBoundingClientRect()
+    // 有没有祖先造出了包含块（transform / filter / perspective / will-change / contain）
+    const culprits = []
+    let el = sheet.parentElement
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el)
+      if (cs.transform !== 'none' || cs.filter !== 'none' || cs.perspective !== 'none'
+          || cs.willChange !== 'auto' || cs.contain !== 'none') {
+        culprits.push(el.className?.toString().slice(0, 40) || el.tagName)
+      }
+      el = el.parentElement
+    }
+    return {
+      opened: true,
+      scrolled: sc.scrollTop,
+      alignsViewport: Math.round(r.top) === 0 && Math.round(r.left) === 0
+        && Math.round(r.width) === window.innerWidth && Math.round(r.height) === window.innerHeight,
+      rect: [Math.round(r.top), Math.round(r.left), Math.round(r.width), Math.round(r.height)],
+      viewport: [window.innerWidth, window.innerHeight],
+      culprits,
+      opts: sheet.querySelectorAll('[data-testid^="theme-opt-"]').length,
+      // 弹层必须 portal 出页面容器，直接挂在 body 下的挂载点上
+      portaled: !!sheet.closest('[data-overlay-host]'),
+    }
+  `)
+  check('主题上拉菜单能打开（滚动到页面中段之后）', sheetGeo.opened && sheetGeo.opts === 3,
+        JSON.stringify({ opened: sheetGeo.opened, opts: sheetGeo.opts, scrolled: sheetGeo.scrolled }))
+  check('🔴 弹层严格对齐视口（不被祖先 transform 捕获成相对容器定位）',
+        sheetGeo.alignsViewport, `rect=${JSON.stringify(sheetGeo.rect)} 视口=${JSON.stringify(sheetGeo.viewport)}`)
+  check('🔴 弹层的祖先链上没有包含块（portal 到 body 的护栏生效）',
+        (sheetGeo.culprits || []).length === 0, (sheetGeo.culprits || []).join(' / ') || '干净')
+  check('弹层确实 portal 出了页面容器', sheetGeo.portaled === true)
+  await page.eval(`document.querySelector('[data-testid="theme-sheet"]')?.click(); return 1`)
+  await sleep(400)
+
+  /**
    * 🔴 引导三幕的窄屏（v3.7，子曰点名：「引导页里的此刻的花、花开了 等几个引导页，
    * 还不是窄屏的」）。
    *
@@ -436,7 +495,8 @@ try {
   await sleep(2200)
 
   const onbActs = []
-  for (const act of ['第一幕 · 生命之花', '第二幕 · 此刻的花', '第三幕 · 花开了']) {
+  // v3.7：第二幕拆成每步三片，所以要多走几轮才能到第三幕
+  for (const act of ['第一幕', '第二幕 · 第一组', '第二幕 · 第二组', '第二幕 · 第三组', '第三幕 · 花开了']) {
     const geo = await page.eval(`
       const box = document.querySelector('[data-testid="onboarding"]')
       if (!box) return { shown: false }
@@ -457,14 +517,44 @@ try {
         // 第二幕专属：花排在第一条滑块之前（窄屏 order 生效）
         flowerBeforeList: !lr || !fr || fr.top <= lr.top,
         hasList: !!lr,
+        /*
+         * 内层滚动条 = 这一步内容放不下。
+         * 子曰的口径是「内容多少要适中，垂直居中，放不下就分多页」——
+         * **内层滚动条是用滚动去容纳过高的内容，治的是症状。**
+         * 所以这条断言守的是"分页分得够不够"，不是"滚起来顺不顺"。
+         */
+        innerScroll: [...box.querySelectorAll('*')].some(el => {
+          const cs = getComputedStyle(el)
+          return (cs.overflowY === 'auto' || cs.overflowY === 'scroll')
+            && el.scrollHeight > el.clientHeight + 2
+            && el !== box
+        }),
+        /*
+         * 🔴 浮标让位 + 按钮命中，**必须在浮层还开着的时候测**。
+         *   我第一版把它放在循环之后 —— 那时引导已经走完，eval 只会返回 skipped，
+         *   于是这条断言看起来"通过"了，其实一次都没跑。
+         *   （一个不会失败的断言是装饰 —— 这一版已经踩过第二次了。）
+         */
+        badgeHidden: (() => {
+          const b = document.querySelector('#demo-badge')
+          return !b || getComputedStyle(b).display === 'none'
+        })(),
+        overlayFlag: !!document.documentElement.dataset.overlayOpen,
+        blockedBtns: [...box.querySelectorAll('button')].filter(b => {
+          const r = b.getBoundingClientRect()
+          if (r.width === 0) return false
+          const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          return !el || !(el === b || b.contains(el))
+        }).map(b => b.innerText.trim().slice(0, 8)),
       }
     `)
     onbActs.push({ act, ...geo })
     if (!geo.shown) break
     // 走去下一幕
+    // v3.7：第二幕分步（每步三片花瓣），所以推进按钮也可能是「接着看」
     const advanced = await page.eval(`
       const btn = [...document.querySelectorAll('[data-testid="onboarding"] button')]
-        .find(b => /走进花园|让花开/.test(b.innerText))
+        .find(b => /走进花园|接着看|让花开/.test(b.innerText))
       if (!btn) return false
       btn.click(); return true
     `)
@@ -473,8 +563,22 @@ try {
   }
 
   const shownActs = onbActs.filter(a => a.shown)
-  check('引导三幕都跑到了（首启引导在窄屏下可用）', shownActs.length >= 2,
+  check('引导每一步都跑到了（首启引导在窄屏下可用）', shownActs.length >= 3,
         shownActs.map(a => a.act).join(' → '))
+  // 🔴 分步之后每一步都必须**放得下**：没有内层滚动条，才谈得上垂直居中
+  const innerScroll = shownActs.filter(a => a.innerScroll)
+  check('🔴 每一步都放得下（内层没有滚动条 —— 有滚动条说明这一步内容过多）',
+        innerScroll.length === 0, innerScroll.map(a => a.act).join(' / ') || '每一步都放得下')
+
+  // 浮标让位 + 按钮命中：在浮层开着的时候逐步测出来的（见上面 geo 里那段注释）
+  const badgeShown = shownActs.filter(a => !a.badgeHidden)
+  check('浮层期间演示浮标让位（<html data-overlay-open> 生效）',
+        badgeShown.length === 0 && shownActs.every(a => a.overlayFlag),
+        badgeShown.map(a => a.act).join(' / ') || `${shownActs.length} 步全部让位`)
+  const blockedInOnb = shownActs.filter(a => (a.blockedBtns || []).length > 0)
+  check('🔴 引导里每个按钮都点得到（没有被浮标压住）',
+        blockedInOnb.length === 0,
+        blockedInOnb.map(a => `${a.act}：${a.blockedBtns.join('/')}`).join(' · ') || '每一步的按钮都点得到')
   const overflowing = shownActs.filter(a => !a.noSideScroll)
   check('🔴 引导每一幕都不横向溢出', overflowing.length === 0,
         overflowing.map(a => a.act).join(' / ') || '三幕都不溢出')

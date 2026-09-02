@@ -150,9 +150,13 @@ export function WeekRings({ dimensions, actions }: Props) {
         <h2 className="text-sm font-medium text-[var(--text-secondary)]" data-testid="week-rings-title">
           {isThisWeek ? '这一周的光' : shown === thisWeek - 7 * DAY_MS ? '上一周的光' : weekLabel(shown)}
         </h2>
-        <div className="flex items-center gap-1">
+        {/* 实拍问题：两个箭头 `‹ ›` 是 12px 的裸字符，既看不出可点、
+            也离标题太远（`justify-between` 把它们甩到了最右）。
+            改成 28px 的圆形触控目标 —— 28 不到 44 的触控下限，
+            但它是**辅助导航**（主路径是看当前这一页），刻意做得不抢眼。 */}
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            className="btn btn-ghost text-xs py-0.5 px-2"
+            className="week-nav"
             onClick={() => go(-1)}
             data-testid="week-prev"
             aria-label="上一周"
@@ -160,7 +164,7 @@ export function WeekRings({ dimensions, actions }: Props) {
             ‹
           </button>
           <button
-            className="btn btn-ghost text-xs py-0.5 px-2"
+            className="week-nav"
             onClick={() => go(1)}
             disabled={isThisWeek}
             data-testid="week-next"

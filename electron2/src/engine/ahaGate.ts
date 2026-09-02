@@ -47,6 +47,26 @@ export type AhaKind =
   // 时刻类：此刻发生的事。补记时一律屏蔽
   | 'daily_first' | 'night_owl' | 'early_bird' | 'intent_set' | 'return_after_break'
 
+/**
+ * 每一类的人话名字（v3.7）—— 「那些美妙时刻」时间轴上给每条打一个标。
+ *
+ * 刻意都是**名词短语，不是评价**：写「花瓣醒来」不写「久违的坚持」，
+ * 写「一周的光」不写「第一周达成」。标签是分类，不是奖状。
+ */
+export const AHA_LABEL: Record<string, string> = {
+  first_ever: '第一笔光',
+  stage_up: '状态跃迁',
+  light_shift: '光的分配',
+  rank_swap: '重心换了地方',
+  awaken: '花瓣醒来',
+  week_light: '一周的光',
+  daily_first: '今天的第一笔',
+  night_owl: '深夜',
+  early_bird: '清晨',
+  intent_set: '立下意图',
+  return_after_break: '回来了',
+}
+
 const MOMENT_KINDS = new Set<AhaKind>([
   'daily_first', 'night_owl', 'early_bird', 'intent_set', 'return_after_break',
 ])

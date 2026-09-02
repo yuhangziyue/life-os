@@ -22,6 +22,7 @@ import { Actions } from './pages/Actions'
 import { Stats } from './pages/Stats'
 import { ReviewPage } from './pages/Review'
 import { ReviewHub } from './pages/ReviewHub'
+import { Moments } from './pages/Moments'
 import { ReviewHistory } from './pages/ReviewHistory'
 import { Settings } from './pages/Settings'
 import { SettingsAmbience } from './pages/SettingsAmbience'
@@ -188,6 +189,8 @@ export default function App() {
             {/* v3.7 B6：复盘从「一页三 tab」拆成「入口页 + 三个当期页 + 历史独立入口」。
                 子曰原话：「点进去可以看到自己每周每月每年的复盘情况，
                 历史回顾放一个单独的入口，月回顾和年回顾也是，默认只显示当前周月年度的」 */}
+            {/* 那些美妙时刻（v3.7）：从「陪你走过的时间」卡右上角进来 */}
+            <Route path="/moments" element={<Moments />} />
             <Route path="/review" element={<ReviewHub />} />
             <Route path="/review/history" element={<ReviewHistory />} />
             <Route path="/review/:period" element={<ReviewPage />} />

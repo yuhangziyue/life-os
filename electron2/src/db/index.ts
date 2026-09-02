@@ -6,6 +6,7 @@ export {
   getActions, addAction, updateAction, deleteAction,
   getReviews, addReview, updateReview, deleteReview,
   getSetting, setSetting, getSnapshots, addSnapshot, logEvent,
+  addMoment, getMoments,
   getQuarterlyReviews, saveQuarterlyReview, deleteQuarterlyReview, setFocusDimensions,
   seedIfNeeded, uuid,
 } from './database'

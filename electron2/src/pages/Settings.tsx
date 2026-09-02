@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore, useCompanionDays, useEnabledDimensions } from '../stores/useStore'
 import { THEMES } from '../services/theme'
+import { identityLine } from '../models/dimension'
 import { isWebBuild } from '../services/storage'
 import { AhaShowcase } from '../components/AhaShowcase'
 import { DemoGardenSwitch } from '../components/DemoGardenSwitch'
@@ -96,7 +97,7 @@ export function Settings() {
               {identities.map(({ name, identity, colorHex }) => (
                 <p key={name} className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: colorHex }} />
-                  成为{identity}的人
+                  {identityLine(identity)}
                   <span className="text-[var(--text-muted)]">· {name}</span>
                 </p>
               ))}
@@ -111,10 +112,10 @@ export function Settings() {
           >
             <span className="settings-row-main">
               <span className="settings-row-name">花瓣</span>
-              <span className="settings-row-sub">
-                每片花瓣的现在、想要，和一句约定
-                {withTarget > 0 || withPact > 0 ? ` · 已设 ${withTarget} 片想要、${withPact} 句约定` : ''}
-              </span>
+              {/* 实拍问题：副文本一长就换行，「修改 ›」被挤到两行的竖直中间，看着歪。
+                  副文本只说"这里面有什么"，已设的数目不属于这一层 ——
+                  它在花瓣列表页里每一行自己都写着。 */}
+              <span className="settings-row-sub">每片花瓣的现在、想要，和一句约定</span>
             </span>
             <span className="settings-row-value">修改</span>
             <span className="settings-row-chev">›</span>

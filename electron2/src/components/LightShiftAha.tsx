@@ -4,6 +4,7 @@ import {
   LIGHT_LAW, TOO_LIGHT, pct, shareDelta, shiftFact,
   type AhaPayload, type LightShift,
 } from '../engine/lightShift'
+import { Overlay } from './Overlay'
 
 /**
  * 「光的分配」定格帧 —— 全产品唯一允许抢注意力的一屏（v3.6 第五轮圆桌定稿）。
@@ -81,7 +82,10 @@ function FactFrame({ payload, stampedAt, onClose }: {
     ? new Date(stampedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
     : null
 
+  // v3.7：portal 到 body —— 祖先上任何 transform/filter/will-change 都会把
+  //   `position: fixed` 捕获成相对该祖先定位（见 Overlay.tsx）
   return (
+    <Overlay>
     <div className="aha-scrim" data-testid="aha-frame" onClick={onClose} role="dialog" aria-label="花园里的一件事">
       <div className="aha-sheet-body" data-testid={`aha-${payload.kind}`} onClick={e => e.stopPropagation()}>
         {dateAnchor && <p className="aha-anchor" data-testid="aha-anchor">{dateAnchor}那一笔之后</p>}
@@ -92,6 +96,7 @@ function FactFrame({ payload, stampedAt, onClose }: {
         ))}
       </div>
     </div>
+    </Overlay>
   )
 }
 
@@ -238,7 +243,9 @@ function LightRiverFrame({ shift, stampedAt, onClose }: {
     ? new Date(stampedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
     : null
 
+  // 同上：portal 到 body，否则祖先的 transform 会把这一屏定位到视口外
   return (
+    <Overlay>
     <div
       className="aha-scrim"
       data-testid="aha-frame"
@@ -297,8 +304,9 @@ function LightRiverFrame({ shift, stampedAt, onClose }: {
         )}
         {showLaw && <p className="aha-law" data-testid="aha-law">{LIGHT_LAW}</p>}
 
-        <p className="aha-exit">具体到几成几，都在细看数据里。</p>
+        <p className="aha-exit">具体到几成几，都在花园年鉴里。</p>
       </div>
     </div>
+    </Overlay>
   )
 }

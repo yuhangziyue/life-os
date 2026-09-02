@@ -51,6 +51,17 @@ const CN_NUM = ['零', '一', '两', '三', '四', '五', '六', '七', '八', '
 /** 少量计数用汉字数词。超过十就回到阿拉伯数字 —— 汉字数词到「十几」会变啰嗦 */
 const cn = (n: number) => (n >= 0 && n <= 10 ? CN_NUM[n] : String(n))
 
+/**
+ * 中英混排的间距规则：**阿拉伯数字两侧加空格，汉字数词不加。**
+ *   「记下 8 条」对，「记下8条」挤；
+ *   「记下了两条」对，「记下了 两 条」反而把一个词拆开了。
+ * 所以不能一刀切（我第一版就是一刀切，把「两条」写成了「两 条」）。
+ */
+const num = (n: number) => {
+  const t = cn(n)
+  return /^[0-9]+$/.test(t) ? ` ${t} ` : t
+}
+
 export interface ReviewSummary {
   text: string
   /** 命中的哪一支，e2e 与埋点用 */
@@ -94,8 +105,8 @@ export function composeReviewSummary(
     return {
       kind: 'thin',
       text: names
-        ? `${word}你记下了${cn(rows.length)}条，落在${names}。`
-        : `${word}你记下了${cn(rows.length)}条。`,
+        ? `${word}你记下了${num(rows.length)}条，落在${names}。`
+        : `${word}你记下了${num(rows.length)}条。`,
     }
   }
 
@@ -113,14 +124,14 @@ export function composeReviewSummary(
         : { kind: 'full', text: `这一年，上半年光最多落在「${h1[0].name}」，下半年是「${h2[0].name}」。` }
     }
     // 某半年无数据 ⇒ 退回月版句式（不硬凑一个不存在的对比）
-    return { kind: 'full', text: `这一年，你的光落在${cn(shares.length)}片花瓣上，最多的是「${top.name}」。` }
+    return { kind: 'full', text: `这一年，你的光落在${num(shares.length)}片花瓣上，最多的是「${top.name}」。` }
   }
 
   if (period === 'month') {
     // 月报铺展：落在几片上
     return {
       kind: 'full',
-      text: `${word}你记下${rows.length}条，落在${cn(shares.length)}片花瓣上。`
+      text: `${word}你记下 ${rows.length} 条，落在${num(shares.length)}片花瓣上。`
         + `光最多的是「${top.name}」，最少的是「${bottom.name}」。`,
     }
   }
@@ -130,7 +141,7 @@ export function composeReviewSummary(
   //   见 v3.7 方案停车场。
   return {
     kind: 'full',
-    text: `${word}你记下${rows.length}条。光最多落在「${top.name}」，最少落在「${bottom.name}」。`,
+    text: `${word}你记下 ${rows.length} 条。光最多落在「${top.name}」，最少落在「${bottom.name}」。`,
   }
 }
 

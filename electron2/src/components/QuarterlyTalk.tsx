@@ -10,6 +10,7 @@ import {
   UNSELECTED_PROMISE, SECOND_FOCUS_HINT, INTENT_STARTERS, SKIP_ACT_LABEL,
   lastIntentQuestion,
 } from '../content/quarterly'
+import { Overlay } from './Overlay'
 
 /**
  * 季度校准会谈 · 五幕（v3.2，照 design-focus-quarterly.md §2 开发）
@@ -361,9 +362,16 @@ export function QuarterlyTalk() {
   )
 }
 
-/** 会谈的花笺容器：全屏居中，四周留白吃掉整个界面 */
+/**
+ * 会谈的花笺容器：全屏居中，四周留白吃掉整个界面。
+ *
+ * 五幕共用这一个容器，所以 portal 只需要包在这里 —— 不必去改五个 return。
+ * v3.7：portal 到 body。祖先上任何 transform/filter/will-change 都会把
+ * `position: fixed` 捕获成相对该祖先定位（实测过一次，见 Overlay.tsx）。
+ */
 function Shell({ children, testId }: { children: React.ReactNode; testId: string }) {
   return (
+    <Overlay>
     <div
       className="fixed inset-0 z-[75] overflow-y-auto quarterly-stage"
       data-testid={testId}
@@ -374,6 +382,7 @@ function Shell({ children, testId }: { children: React.ReactNode; testId: string
         <div className="w-full animate-fade-in">{children}</div>
       </div>
     </div>
+    </Overlay>
   )
 }
 

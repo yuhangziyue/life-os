@@ -87,22 +87,27 @@ export function GardenTasks() {
 
   return (
     <div className="card" data-testid="garden-tasks">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-[var(--text-secondary)]">
+      {/* 实拍问题：标题与两个按钮等权重挤在一行，读起来像三个并列的标题。
+          按钮收成 11px 的弱文本、贴右，标题才重新成为标题。 */}
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <h2 className="text-sm font-medium text-[var(--text-secondary)] flex-shrink-0">
           来自花园的轻声提醒
         </h2>
-        <div className="flex gap-1">
+        <div className="flex gap-2 flex-shrink-0">
           {/* 换到上限就不再显示这个按钮 —— 一个点了没反应的按钮比没有按钮更差 */}
           {canShuffle && (
             <button
-              className="btn btn-ghost text-xs py-1 px-2"
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
               data-testid="garden-shuffle"
               onClick={handleShuffle}
             >
               换一批
             </button>
           )}
-          <button className="btn btn-ghost text-xs py-1 px-2" onClick={handleDismiss}>
+          <button
+            className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            onClick={handleDismiss}
+          >
             今天先不看
           </button>
         </div>
@@ -119,14 +124,17 @@ export function GardenTasks() {
               className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
               style={{ backgroundColor: task.color }}
             />
+            {/* 花瓣名原来 inline 在句子中间（`<span>句子</span><span>花瓣名</span>` 同一行），
+                于是长句子被它切成三段 —— 实拍里「为「想清楚「够了」是什么」往前挪一小步」
+                被切得读不通。挪到下一行、与 why 同排：
+                **句子归句子，标签归标签。** */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{task.text}</span>
-                <span className="text-[11px] flex-shrink-0" style={{ color: task.color }}>
-                  {task.dimensionName}
-                </span>
-              </div>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{task.why}</p>
+              <p className="text-sm leading-relaxed">{task.text}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+                <span style={{ color: task.color }}>{task.dimensionName}</span>
+                <span className="mx-1.5 opacity-40">·</span>
+                {task.why}
+              </p>
             </div>
             <button
               className="btn btn-ghost text-xs py-1 px-2.5 flex-shrink-0"

@@ -12,6 +12,10 @@ import { startOfToday } from '../engine/scoring'
 import { isEarly, isNight } from '../engine/ahaGate'
 
 const DAY_MS = 24 * 60 * 60 * 1000
+
+/** 少量计数用汉字数词：「一条」是叙述，「1 条」是计量 —— 孤单感来自后者（书香口径） */
+const CN = ['零', '一', '两', '三', '四', '五', '六', '七', '八', '九', '十']
+const cnCount = (n: number) => `${n <= 10 ? CN[n] : n} 条`
 /**
  * 「最近的记录」在这一屏**最多只露三条**（v3.7 A3）。
  * 原来挂 14 天，越用越长 —— 而这一屏的职责是**今天**，不是档案馆。
@@ -123,7 +127,12 @@ export function Today() {
         {/* ② 我今天做的 */}
         <div className="card">
           <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
-            我今天做的 · {todayActions.filter(a => a.isCompleted).length}/{todayActions.length}
+            {/* 🔴 原来这里是 `{已完成}/{总数}` —— 那是**完成率**，长在首屏第一眼上。
+                它同时撞三条红线：不评判（分母把记录变成待办清单）、
+                首页不出精确分数、奖励是惩罚的孪生兄弟（4/4 是满分，3/4 就是欠一笔）。
+                e2e 里本来就有一条 `!/\d+\/\d+/` 的断言，只是没覆盖到这一处。
+                改成只报条数，而且用汉字数词 —— 「一条」是叙述，「1 条」是计量。 */}
+            我今天做的{todayActions.length > 0 ? ` · ${cnCount(todayActions.length)}` : ''}
           </h2>
           {todayActions.length === 0 ? (
             <div className="text-center py-7 text-[var(--text-muted)] text-sm" data-testid="today-empty">

@@ -160,18 +160,31 @@ export function Stats() {
             固定 90 天、永不横向增长：长度一旦随使用天数变长，它就是进度条。 */}
         <LightRings dimensions={dimensions} actions={actions} />
 
-        {/* 陪伴（C3）：不是 streak，永不清零，没有里程碑弹窗 */}
-        <div className="card flex items-center gap-8" data-testid="companion-card">
-          <div>
-            <div className="text-xs text-[var(--text-muted)] mb-1">这朵花陪了你</div>
-            <div className="text-2xl font-light text-[var(--accent)]">{companionDays} 天</div>
+        {/*
+          陪伴（C3）：不是 streak，永不清零，没有里程碑弹窗。
+          v3.7 重排 —— 原来是 `flex items-center gap-8` 三列并排，在 390px 上必然折行：
+          标签「其中来浇过水的日子」断成两行，而**「91」和「天」被拆到了两行** ——
+          数字与它的单位断开是排版里最刺眼的一种，因为读者会先把数字读成一个孤立的量。
+          改成两列等宽网格（复用全局 .metric-row 那套已验证的栅格），
+          数字与单位 `whitespace-nowrap` 绑在一起，那句话落到下面独占一行。
+        */}
+        <div className="card space-y-3" data-testid="companion-card">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-[var(--bg-secondary)] px-3 py-2.5">
+              <div className="text-[11px] text-[var(--text-muted)] leading-snug">这朵花陪了你</div>
+              <div className="mt-1 text-2xl font-light text-[var(--accent)] whitespace-nowrap tabular-nums">
+                {companionDays}<span className="text-sm ml-1">天</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-[var(--bg-secondary)] px-3 py-2.5">
+              <div className="text-[11px] text-[var(--text-muted)] leading-snug">其中来浇过水的</div>
+              <div className="mt-1 text-2xl font-light whitespace-nowrap tabular-nums">
+                {recordedDays}<span className="text-sm ml-1">天</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-[var(--text-muted)] mb-1">其中来浇过水的日子</div>
-            <div className="text-2xl font-light">{recordedDays} 天</div>
-          </div>
-          <p className="text-xs text-[var(--text-muted)] leading-relaxed ml-auto max-w-[200px]">
-            断了几天也不要紧，这两个数字只会往上长
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+            断了几天也不要紧 —— 这两个数字只会往上长。
           </p>
         </div>
 
@@ -357,9 +370,11 @@ export function Stats() {
           )}
         </div>
 
-        {/* 维度排名（按本视图时段的均分排，条形下方带该时段真实活动量） */}
+        {/* 花瓣排名（按本视图时段的均分排，条形下方带该时段真实活动量）。
+            v3.7 改名：「维度」是**规格词**，用户在界面上看到、点到、想到的都是花瓣。
+            全产品的口径是「花瓣」，只有代码内部和数据表还叫 dimension。 */}
         <div className="card">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-4">维度排名</h2>
+          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-4">花瓣排名</h2>
           <div className="space-y-2">
             {[...summary.rows]
               .sort((a, b) => b.avgScore - a.avgScore)

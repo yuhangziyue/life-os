@@ -1,6 +1,6 @@
 import {
   getDimensions, getScoreRubrics, getBranches, getGoals, getActions, getReviews,
-  getQuarterlyReviews, getSnapshots,
+  getQuarterlyReviews, getSnapshots, getMoments,
 } from './database'
 import { addDimension, addBranch, addGoal, addAction } from './database'
 
@@ -30,7 +30,7 @@ function api() {
 }
 
 export async function exportJSON(): Promise<string> {
-  const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, snapshots, settings] =
+  const [dimensions, scoreRubrics, branches, goals, actions, reviews, quarterlyReviews, snapshots, settings, moments] =
     await Promise.all([
       getDimensions(),
       getScoreRubrics(),
@@ -41,6 +41,11 @@ export async function exportJSON(): Promise<string> {
       getQuarterlyReviews(),
       getSnapshots(),
       api().dbSettingsGetAll(),
+      // v3.7：那些美妙时刻**必须**进导出。
+      //   v3.6.2 就是因为漏表出过一次事（季度会谈全部记录没导，
+      //   而网页版亲口写着「导出是唯一的保命通道」）。
+      //   新表的第一件事就是接上导出，别等下一次审计。
+      getMoments(),
     ])
 
   // 待播的 Aha 载荷是**当下这一刻的中间态**，不是用户数据。
@@ -49,10 +54,10 @@ export async function exportJSON(): Promise<string> {
   void ahaPending
 
   return JSON.stringify({
-    version: '3.0.0',
+    version: '3.1.0',
     exportedAt: new Date().toISOString(),
     dimensions, scoreRubrics, branches, goals, actions, reviews,
-    quarterlyReviews, snapshots, settings: keptSettings,
+    quarterlyReviews, snapshots, settings: keptSettings, moments,
   }, null, 2)
 }
 
@@ -100,6 +105,9 @@ export async function importJSON(jsonStr: string): Promise<{ success: boolean; m
         await api().dbQuarterlyUpsert(q)
         restoredQuarterly++
       }
+    }
+    if (data.moments?.length) {
+      for (const m of data.moments) await api().dbMomentsAdd(m)
     }
     if (data.snapshots?.length) {
       for (const s of data.snapshots) await api().dbSnapshotsAdd(s)

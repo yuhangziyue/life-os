@@ -200,6 +200,33 @@ const MIGRATIONS = [
       `)
     },
   },
+  {
+    version: 8,
+    name: 'v3.7「那些美妙时刻」：aha_moments 表 —— 让 Aha 能被回看',
+    up(db) {
+      /*
+       * 为什么要单开一张表，而不是往 events 上加一列 payload：
+       *   `events` 是**闸门的账**（同类冷却 14/30 天、每天 1 条、每周 3 条都查它），
+       *   它只需要 (name, at)，而且有 UNIQUE(name, at) 约束。
+       *   把「给用户读的内容」混进去，这张表就变成了两件事，
+       *   而两件事共用一张表的下一步必然是其中一件把另一件的约束搞坏。
+       *
+       * 这张表是**只增不改**的：Aha 播过就是播过，内容不该事后被改写 ——
+       * 它是账的一部分，而这产品最不能让用户怀疑的就是账的可信度。
+       */
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS aha_moments (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          headline TEXT NOT NULL DEFAULT '',
+          lines TEXT NOT NULL DEFAULT '[]',
+          colorHex TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_moments_at ON aha_moments(at DESC);
+      `)
+    },
+  },
 ]
 
 function runMigrations() {
@@ -516,6 +543,25 @@ function logEvent(name) {
   db.prepare('INSERT OR IGNORE INTO events (name, at) VALUES (?, ?)').run(String(name), Date.now())
 }
 
+// ---- 那些美妙时刻（v3.7）：Aha 播过之后落一条，供「那些美妙时刻」时间轴回看 ----
+//
+// 只增不改：Aha 播过就是播过，内容不该事后被改写 —— 它是账的一部分。
+// `INSERT OR IGNORE` + 主键 id：上层手抖调两次不会重复。
+function addMoment(row) {
+  db.prepare(
+    'INSERT OR IGNORE INTO aha_moments (id, kind, at, headline, lines, colorHex) VALUES (?,?,?,?,?,?)'
+  ).run(
+    String(row.id), String(row.kind), Number(row.at),
+    String(row.headline || ''), JSON.stringify(row.lines || []), String(row.colorHex || ''),
+  )
+}
+function getMoments() {
+  return db.prepare('SELECT * FROM aha_moments ORDER BY at DESC').all().map(r => ({
+    ...r,
+    lines: (() => { try { return JSON.parse(r.lines) } catch { return [] } })(),
+  }))
+}
+
 /** 全量读 settings（导出用）。见 electron.d.ts 里那段「白名单是个沉默的陷阱」 */
 function getAllSettings() {
   const rows = db.prepare('SELECT key, value FROM settings').all()
@@ -595,6 +641,7 @@ module.exports = {
   getActions, getActionsByDimension, addAction, updateAction, deleteAction,
   getReviews, addReview, updateReview, deleteReview,
   getSetting, setSetting, getAllSettings, getSnapshots, addSnapshot, logEvent,
+  addMoment, getMoments,
   hasEvent, hasEventSince, countEventsSince, clearEventsByPrefix,
   getQuarterlyReviews, upsertQuarterlyReview, deleteQuarterlyReview, setFocusDimensions,
 }

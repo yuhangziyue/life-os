@@ -30,6 +30,8 @@ export interface WebSnapshot {
   settings: Record<string, string>
   flower_snapshots: any[]
   events: { id: number; name: string; at: number }[]
+  /** 那些美妙时刻（v3.7）。与 SQLite 的 aha_moments 一一对应，只增不改 */
+  aha_moments: { id: string; kind: string; at: number; headline: string; lines: string[]; colorHex: string }[]
   quarterly_reviews: any[]
 }
 
@@ -37,6 +39,7 @@ export function emptySnapshot(): WebSnapshot {
   return {
     dimensions: [], score_rubrics: [], branches: [], goals: [], actions: [],
     reviews: [], settings: {}, flower_snapshots: [], events: [], quarterly_reviews: [],
+    aha_moments: [],
   }
 }
 
@@ -184,6 +187,11 @@ export interface WebBackend {
 export interface WebBackendOptions {
   /** 空库时灌什么。web demo 灌样板数据，与 Electron 生产版的空白骨架种子是两回事 */
   seed: (now: number) => WebSnapshot
+  /**
+   * 当前演示数据的版本号（由调用方传入 —— 这一层不能反向引 demoSeed，会成环）。
+   * 库里存的版本与它不一致时重灌演示数据。见下方那段安全边界注释。
+   */
+  seedVersion?: string
 }
 
 export async function createWebBackend(opts: WebBackendOptions): Promise<WebBackend> {
@@ -196,6 +204,26 @@ export async function createWebBackend(opts: WebBackendOptions): Promise<WebBack
   let db = (await persist.load()) ?? opts.seed(Date.now())
   // 老快照可能缺后加的表（比如以前存的没有 quarterly_reviews），补齐再用
   db = { ...emptySnapshot(), ...db }
+
+  /*
+   * 演示数据版本升级（v3.7）。
+   *
+   * 问题：演示数据改了（这一版加了「那些美妙时刻」），而老访客的 IndexedDB
+   * 存着旧快照，上面那行只会把新表补成空数组 —— **新页面永远是空的**。
+   *
+   * 🔴 绝不能碰的边界：**用户点过「清空，种我自己的」之后，那份数据是他自己的，
+   *   一次都不许被覆盖。** 判据是 `demoSeedVersion` 的**存在性** ——
+   *   `emptySeed` 刻意不写它，所以：
+   *     · key 不存在 ⇒ 这不是演示花园（或是版本号出现之前的老演示）⇒ **什么都不做**
+   *     · key 存在但过期 ⇒ 确定是演示花园 ⇒ 重灌
+   *   代价是版本号出现之前的老演示访客要手点一次「恢复演示数据」。
+   *   这个代价有界，而反过来（误删用户自己的账）不可挽回。
+   */
+  const seedVer = (db.settings as Record<string, string>)?.demoSeedVersion
+  if (opts.seedVersion && seedVer && seedVer !== opts.seedVersion) {
+    db = { ...emptySnapshot(), ...opts.seed(Date.now()) }
+    void persist.save(db)
+  }
 
   let pending: Promise<void> | null = null
   let dirty = false
@@ -317,6 +345,13 @@ export async function createWebBackend(opts: WebBackendOptions): Promise<WebBack
       db.events.push({ id, name: String(name), at: now })
       return ok()
     },
+    // 那些美妙时刻（v3.7）。只增不改 —— 主键重复静默吞掉，与 SQLite 的 INSERT OR IGNORE 对齐
+    dbMomentsAdd: async (row) => {
+      if (db.aha_moments.some(m => m.id === row.id)) return true
+      db.aha_moments.push({ ...row, lines: [...(row.lines || [])] })
+      return ok()
+    },
+    dbMomentsGetAll: async () => [...db.aha_moments].sort((a, b) => b.at - a.at),
     dbEventsHas: async (name) => db.events.some(e => e.name === name),
     dbEventsHasSince: async (name, since) => db.events.some(e => e.name === name && e.at >= since),
     dbEventsCountSince: async (name, since) => db.events.filter(e => e.name === name && e.at >= since).length,

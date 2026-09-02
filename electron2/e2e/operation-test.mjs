@@ -97,14 +97,37 @@ async function reload() {
  * 换页。打包档首绘慢，固定 sleep 会赶在渲染前 —— 台账里那 4 条「导航竞态抖动」就是它。
  * 改成轮询：等 hash 真的变了、且 main 里有内容了才继续。
  */
+/**
+ * 切页并**等到新页面真的渲染出来**。
+ *
+ * 🔴 这里有一个坑，v3.7 才被暴露出来（我把「维度管理」改名之后）：
+ *   原来轮询的两个条件是「hash 匹配」+「main 里有文字」——
+ *   而 hash 是**同步**改的，main 里此刻还是**上一页的 DOM**，
+ *   于是这两个条件在切页那一瞬就都成立了，goto 立刻返回，
+ *   调用方读到的是**上一页的内容**。
+ *   以前碰巧没暴露，是因为各页文案差异大、时序又刚好；
+ *   一旦某页渲染慢一点（或前一页变长），断言就会读到隔壁那一页。
+ *
+ * 改成等「内容真的变了」：先记下当前 main 的文本，再等它变化。
+ * 同页跳同页时文本不会变 —— 那种情况下等满一轮再走（只是慢一点，不会错）。
+ */
 async function goto(hash) {
+  const before = await p.eval(`return (document.querySelector('main')?.innerText || '').trim()`)
+  const already = await p.eval(`
+    const h = location.hash || '#/'
+    const want = ${JSON.stringify(hash || '#/')}
+    return h === want || h === want + '/'
+  `)
   await p.eval(`location.hash='${hash}'; return 1`)
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 30; i++) {
     const ok = await p.eval(`
       const h = location.hash || '#/'
       const want = ${JSON.stringify(hash || '#/')}
       const m = document.querySelector('main')
-      return (h === want || h === want + '/') && !!m && (m.innerText || '').trim().length > 0
+      const now = (m?.innerText || '').trim()
+      const hashOk = h === want || h === want + '/'
+      // 内容必须**换掉**才算渲染完；本来就在这一页时退回「有内容」即可
+      return hashOk && now.length > 0 && (${JSON.stringify(!!already)} || now !== ${JSON.stringify(before)})
     `)
     if (ok) break
     await sleep(120)
@@ -197,7 +220,8 @@ await phase('阶段 3：页面逐个导航（v3.5 三入口 + 二级页全保留
     ['#/', '我今天做的', '02-today'],
     ['#/garden', '我的花园', '02b-garden'],
     ['#/me', '这座花园', '02c-me'],
-    ['#/dimensions', '维度管理', '03-dimensions'],
+    // v3.7：「维度管理」同时撞两条 —— 「维度」是规格词（用户看到的是花瓣），「管理」是禁用词
+    ['#/dimensions', '每一片花瓣', '03-dimensions'],
     ['#/actions', '全部记录', '04-actions'],
     // v3.7 改名：细看数据→花园年鉴（B8）· 周对账→我的复盘（B6）
     ['#/stats', '花园年鉴', '05-stats'],
@@ -391,13 +415,21 @@ await phase('阶段 5：评分引擎联动', async () => {
     const h = dims.find(d => d.name === '身心健康')
     const t0 = new Date(); t0.setHours(0,0,0,0)
     const coveredDb = new Set(acts.filter(a => a.date >= t0.getTime() && a.isCompleted).map(a => a.dimensionId)).size
-    const m = document.body.innerText.match(/今日照顾了 (\\d+)\\/(\\d+) 片花瓣/)
-    return { health: h?.currentScore, expected: calc(h), coveredUi: m?.[1], coveredDb }
+    // v3.7：这句原来是「今日照顾了 N/M 片花瓣」，M 那个分母是完成率 ——
+    //   4/8 读起来就是「满分 8 你拿了 4」，而这产品的立论恰恰是
+    //   你不可能也不该照顾全部（对外主张：只能让其中两三片盛开）。
+    //   分母已删，现在只报数目。断言跟着改成匹配新句式。
+    //   （⚠️ 这段注释里原本写了带反引号的 4/8 —— 它在模板字符串里会把字符串截断）
+    const m = document.body.innerText.match(/今天照顾了 (\\d+) 片花瓣/)
+    const noRatio = !/照顾了\\s*\\d+\\s*\\/\\s*\\d+/.test(document.body.innerText)
+    return { health: h?.currentScore, expected: calc(h), coveredUi: m?.[1], coveredDb, noRatio }
   `)
   check('维度分数与评分公式一致（贡献 ×0.2，无衰减扣分）',
         Math.abs(s.health - s.expected) < 0.001, `身心健康=${s.health} 期望=${s.expected}`)
-  check('今日照顾维度数与数据库一致', s.coveredUi === String(s.coveredDb),
+  check('今日照顾花瓣数与数据库一致',
+        s.coveredDb === 0 ? s.coveredUi === undefined : s.coveredUi === String(s.coveredDb),
         `UI=${s.coveredUi} DB=${s.coveredDb}`)
+  check('🔴 花下面那句不出现「N/M」形式的完成率', s.noRatio === true)
 })
 
 // ======================================================================
@@ -1261,7 +1293,17 @@ await phase('阶段 10.9：陪伴天数 / 时光机 / 热力图柔化（v3.1 C3/
 
 // ======================================================================
 await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () => {
-  // 老库应已被迁移豁免
+  /*
+   * 老库应已被迁移豁免。
+   *
+   * ⚠️ 这一条曾经被**上一轮崩溃留下的污染**弄红过：
+   *   本阶段中途会把 `onboardingDone` 清空（为了测首启路径），
+   *   如果那之后崩了，dev 库就把 `''` 留给了下一轮，
+   *   而这条断言在阶段开头读，于是报「值=」。
+   *   ⇒ 修法在阶段**收尾处无条件写回 '1'**（见本阶段末尾），
+   *     让这个阶段对自己造成的状态负责。
+   *   这类"上一轮的残留把下一轮判红"的问题，v3.6.2 在 e2e 探针上已经踩过一次。
+   */
   const grand = await p.eval(`return await window.electronAPI.dbSettingsGet('onboardingDone')`)
   check('迁移 v3 豁免老库（onboardingDone=1）', grand === '1', `值=${grand}`)
 
@@ -1292,8 +1334,16 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
     canvas: !!document.querySelector('[data-testid="onboarding-scoring"] canvas'),
     noPetalAct: !document.querySelector('[data-testid="onboarding"]')?.innerText.includes('八片花瓣'),
   }`)
+  /*
+   * v3.7：第二幕**分步**了（子曰口径：「内容多少要适中，垂直居中，
+   * 如果一页放不下 分多页多个步骤介绍完」）。
+   * 上一版靠「顶对齐 + 内层 42vh 滚动条」硬塞八条滑块 —— 那是用滚动去容纳过高的内容，
+   * 而且让这一幕变成一张要滚的表单（**表单是要横向比较着填的东西**，
+   * 正好是这产品最不要的动作）。现在每步三片。
+   * ⇒ 所以断言从 `rows >= 8` 改成「每步 ≤3 片，且总共能走完全部花瓣」。
+   */
   check('第二幕：欢迎后直达打分幕（八片花瓣独立幕已删）',
-        act1.scoring && act1.rows >= 8 && act1.noPetalAct,
+        act1.scoring && act1.rows > 0 && act1.rows <= 3 && act1.noPetalAct,
         `rows=${act1.rows} noPetalAct=${act1.noPetalAct}`)
   check('第二幕：打分幕并排实时花形（scoreOverride）', act1.canvas, `canvas=${act1.canvas}`)
 
@@ -1320,6 +1370,39 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
     dots[4].click(); return 1
   `)
   await sleep(300)
+
+  /*
+   * 走完第二幕剩下的分步。顺便**逐步守两条**：
+   *   ① 每一步都不超过 3 片（分页真的分了）
+   *   ② 每一步内层都没有滚动条 —— 有滚动条就说明这一步内容仍然放不下，
+   *      那正是子曰点名的那个问题
+   */
+  const steps = await p.eval(`
+    const out = []
+    for (let i = 0; i < 8; i++) {
+      const box = document.querySelector('[data-testid="onboarding"]')
+      out.push({
+        rows: document.querySelectorAll('[data-testid="onboarding-score-row"]').length,
+        innerScroll: [...box.querySelectorAll('*')].some(el => {
+          const cs = getComputedStyle(el)
+          return (cs.overflowY === 'auto' || cs.overflowY === 'scroll')
+            && el.scrollHeight > el.clientHeight + 2 && el !== box
+        }),
+      })
+      const next = document.querySelector('[data-testid="onboarding-step-next"]')
+      if (!next) break
+      next.click()
+      await new Promise(r => setTimeout(r, 500))
+    }
+    return out
+  `)
+  check('第二幕：分步走得完，且每步不超过三片花瓣',
+        steps.length >= 2 && steps.every(x => x.rows > 0 && x.rows <= 3),
+        steps.map(x => x.rows).join('+'))
+  check('🔴 第二幕每一步都放得下（内层没有滚动条）',
+        steps.every(x => !x.innerScroll),
+        steps.map((x, i) => (x.innerScroll ? `第${i + 1}步溢出` : '')).filter(Boolean).join(' ') || '每步都放得下')
+
   await p.eval(`document.querySelector('[data-testid="onboarding-bloom"]').click(); return 1`)
   await sleep(3000)
   const act3 = await p.eval(`return {
@@ -1327,7 +1410,8 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
     canvas: !!document.querySelector('[data-testid="onboarding"] canvas'),
     impression: document.querySelector('[data-testid="first-impression"]')?.innerText || '',
   }`)
-  check('第三幕：花开了 + 操作提示', act3.bloom && act3.canvas, JSON.stringify({ bloom: act3.bloom, canvas: act3.canvas }))
+  check('第三幕：花开了（那一屏只放花与代价快照）',
+        act3.bloom && act3.canvas, JSON.stringify({ bloom: act3.bloom, canvas: act3.canvas }))
   // T1 核心：代价快照必须出现，且不能有褒贬词（Lisa 的口径红线）
   check('第三幕：第一份代价快照出现',
         act3.impression.length > 0 && /选择|合着|接近/.test(act3.impression),
@@ -1336,6 +1420,37 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
         !/最丰盛|很难得|难得|不错|真棒|做得好/.test(act3.impression),
         act3.impression.slice(0, 50).replace(/\n/g, '/'))
   await p.shot(`${SHOTS}/23-onboarding-bloom.png`)
+
+  /*
+   * v3.7：第三幕也拆成两步（子曰：「花开了 内容还是比较多 一屏放不下」）。
+   * 拆法不是对半切，是按**这一幕的两件事**切：
+   *   第 0 步 = 那个瞬间（花 + 第一份代价快照）—— 整个引导的情绪落点，独占一屏
+   *   第 1 步 = 接下来怎么用（三条 + 明信片 + 出口）
+   * **把"感受"和"说明"塞进同一屏，感受一定输。**
+   * 所以明信片与操作说明现在在第二步，要先点「接着看」。
+   */
+  const howto = await p.eval(`
+    const btn = document.querySelector('[data-testid="onboarding-bloom-next"]')
+    if (!btn) return { advanced: false }
+    btn.click()
+    await new Promise(r => setTimeout(r, 700))
+    const box = document.querySelector('[data-testid="onboarding-howto"]')
+    const txt = box?.innerText || ''
+    return {
+      advanced: !!box,
+      // 🔴 三条操作说明原来指向的 UI **已经不存在了**：
+      //   「+ 快速记录」在 v3.7 D1 改成了右下角那个「记」；
+      //   「左边的『省 · 回顾反思』」—— 侧栏在 v3.6 整个删掉了。
+      //   一份教用户去点不存在的东西的说明书，比没有说明书更坏：
+      //   它让用户以为是自己找不到。
+      stale: /侧栏|左边的|快速记录|花语手册/.test(txt),
+      mentionsFab: /「记」/.test(txt),
+    }
+  `)
+  check('第三幕第二步：接下来怎么用（说明与明信片已从"花开了"那一屏拆出）',
+        howto.advanced, JSON.stringify(howto))
+  check('🔴 操作说明不指向已删的 UI（侧栏 / 「+ 快速记录」/ 「花语手册」）',
+        howto.stale === false && howto.mentionsFab === true, JSON.stringify(howto))
 
   // v3.4 A4：首启明信片（子曰拍板「明信片需要」）——只画花+快照，不画占比
   const card = await p.eval(`
@@ -1391,6 +1506,10 @@ await phase('阶段 10.10：首启引导（v3.1 B2/B3，吞 P0-8）', async () =
   check('氛围页可重看引导', replay)
   await p.eval(`${HELPERS}; window.__t.byText('button', '先逛逛').click(); return 1`)
   await sleep(800)
+
+  // 🔴 收尾：无条件写回 '1'。本阶段中途清空过它，
+  //   一旦中途崩溃就会把 '' 留给下一轮，把阶段开头那条断言判红（已经发生过一次）。
+  await p.eval(`await window.electronAPI.dbSettingsSet('onboardingDone', '1'); return 1`)
 
   // 还原用户维度分数
   await p.eval(`

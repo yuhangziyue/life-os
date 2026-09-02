@@ -7,14 +7,14 @@ import {
   getGoals, addGoal, updateGoal, deleteGoal,
   getActions, addAction, updateAction, deleteAction,
   getReviews, addReview, updateReview, deleteReview,
-  setSetting, getSetting, logEvent,
+  setSetting, getSetting, logEvent, addMoment,
   getQuarterlyReviews, saveQuarterlyReview, deleteQuarterlyReview, setFocusDimensions,
   seedIfNeeded, uuid,
 } from '../db'
 import { loadAmbience, saveAmbience, applyCursorSetting, type Ambience } from '../services/ambience'
 import { calculateScore, overallScore, coveredDimensions, startOfToday, dimensionVitality } from '../engine/scoring'
 import { composeEcho, composeCompleteEcho, type Echo } from '../engine/echo'
-import { composeLightShift, LIGHT_LAW_SEEN_KEY, type AhaPayload } from '../engine/lightShift'
+import { composeLightShift, LIGHT_LAW_SEEN_KEY, type AhaPayload, shiftFact } from '../engine/lightShift'
 import {
   detectAwaken, detectStageShift, detectWeekLight, isDailyFirst,
   awakenLine, stageShiftLines, weekLightLines,
@@ -114,6 +114,27 @@ async function takePendingAha(
     await setSetting(AHA_PENDING_KEY, '')
     await logEvent(EV_PLAYED)
     await logEvent(`${EV_KIND_PREFIX}${gateKind}`)
+
+    /*
+     * 落一条「那些美妙时刻」（v3.7，子曰点名）——
+     * 这些定格帧是刻意做稀有的（同类冷却 14/30 天 · 每天 1 条 · 每周 3 条 ·
+     * 样本地板 · 深夜与坏日子静音），所以一个用户一年也就撞上十几次。
+     * **稀有 + 看过就没了 = 那些话等于没说过。** 现在它们进账，能回看。
+     *
+     * 只在**真的播出去**之后写（闸门之后），不在攒帧时写 ——
+     * 攒了没播的帧对用户不存在，把它记进「美妙时刻」就是在虚报。
+     */
+    void addMoment({
+      // id 用 kind+at：同一帧重复消费时主键撞上，被 INSERT OR IGNORE 吞掉
+      id: `${gateKind}-${payload.at}`,
+      kind: gateKind,
+      at: payload.at,
+      headline: payload.kind === 'light_shift'
+        ? shiftFact(payload.shift)
+        : payload.headline,
+      lines: payload.kind === 'light_shift' ? [] : payload.lines,
+      colorHex: payload.kind === 'light_shift' ? payload.shift.gained.colorHex : payload.colorHex,
+    })
     return { aha: payload, ahaStampedAt: payload.at }
   } catch {
     return none

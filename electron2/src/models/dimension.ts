@@ -105,3 +105,21 @@ export const PLANT_PALETTE: { name: string; hex: string }[] = [
   { name: '黛蓝', hex: '#6E8CAF' },
   { name: '苔绿', hex: '#8FA876' },
 ]
+
+/**
+ * 身份宣言的成句（v3.7）。
+ *
+ * 原来两处都直接写 `成为{identity}的人`，而 `identity` 是**用户自由输入**的字段，
+ * 演示种子里就有两条自带「的人」结尾（`'一直在学新东西的人'` / `'能跑十公里的人'`），
+ * 于是界面上出现了 **「成为一直在学新东西的人的人」**。
+ *
+ * 光改数据不够 —— 用户下一次自己敲「能跑十公里的人」还是会撞。
+ * **凡是拿用户输入去套模板的地方，模板必须容错。**
+ */
+export function identityLine(identity: string): string {
+  const t = (identity || '').trim()
+  if (!t) return ''
+  // 已经自带「…的人 / …者 / …的家伙」这类人称收尾的，不再补
+  if (/[的]人$|者$|家$|员$/.test(t)) return `成为${t}`
+  return `成为${t}的人`
+}

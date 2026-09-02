@@ -58,7 +58,9 @@ export function Dimensions() {
     <div className="flex-1 overflow-y-auto">
       <div className="page-pad space-y-4">
         <SubPageHeader
-          title="维度管理"
+          // v3.7：这个页名同时撞两条 —— 「维度」是规格词（用户看到的是花瓣），
+          //   「管理」是晓雅立的禁用词（这产品不管理人生，它只把账摊开）
+          title="每一片花瓣"
           subtitle="生命之花的每一片花瓣"
           fallback="/garden"
           right={

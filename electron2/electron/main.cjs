@@ -155,6 +155,9 @@ function registerIPC() {
   ipcMain.handle('db:snapshots:getAll', () => { log('[IPC] db:snapshots:getAll'); return db.getSnapshots() })
   ipcMain.handle('db:snapshots:add', (_e, row) => { log('[IPC] db:snapshots:add', row.weekKey); db.addSnapshot(row); return true })
   ipcMain.handle('db:events:log', (_e, name) => { log('[IPC] db:events:log', name); db.logEvent(name); return true })
+  // 那些美妙时刻（v3.7）：Aha 播过之后落一条，供时间轴回看
+  ipcMain.handle('db:moments:add', (_e, row) => { log('[IPC] db:moments:add', row.kind); db.addMoment(row); return true })
+  ipcMain.handle('db:moments:getAll', () => db.getMoments())
   ipcMain.handle('db:settings:getAll', () => db.getAllSettings())
   ipcMain.handle('db:events:has', (_e, name) => db.hasEvent(name))
   ipcMain.handle('db:events:hasSince', (_e, name, since) => db.hasEventSince(name, since))

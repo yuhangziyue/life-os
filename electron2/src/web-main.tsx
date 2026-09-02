@@ -9,7 +9,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles/globals.css'
 import { createWebBackend, storageLabel } from './db/webAdapter'
-import { buildDemoSnapshot } from './db/demoSeed'
+import { buildDemoSnapshot, DEMO_SEED_VERSION } from './db/demoSeed'
 import { buildEmptySnapshot } from './db/emptySeed'
 import { initWebStorageStatus } from './services/storage'
 
@@ -20,7 +20,13 @@ const rootEl = document.getElementById('root')
 if (!rootEl) throw new Error('#root 未找到，index.web.html 可能被改坏了')
 
 async function boot() {
-  const backend = await createWebBackend({ seed: buildDemoSnapshot })
+  // seedVersion：演示数据改版后让老访客也能看到新内容。
+  //   🔴 它只对**演示花园**生效 —— 用户点过「清空，种我自己的」的那份数据
+  //   没有 demoSeedVersion 这个 key，所以永不被覆盖（见 webAdapter 里那段注释）。
+  const backend = await createWebBackend({
+    seed: buildDemoSnapshot,
+    seedVersion: DEMO_SEED_VERSION,
+  })
   window.electronAPI = backend.api
 
   // 存储持久化（v3.4 A1）—— 必须在挂 React 之前拿到结果：
@@ -106,7 +112,14 @@ function mountDemoBadge(kind: Parameters<typeof storageLabel>[0]) {
       #demo-badge { right: auto; left: 12px;
         bottom: calc(70px + env(safe-area-inset-bottom)); }
       #demo-badge-panel { right: auto; left: 0; }
-    }`
+    }
+    /* 🔴 浮层期间浮标让位（v3.7）。
+       实测：引导第二幕的「← 上一步」在左下角，而窄屏浮标也钉在左下 ——
+       **浮标正好压住那个按钮**。这与 v3.6.2 修过的「浮标盖住第三个 tab」
+       是同一类命中问题，只是这次被盖的是浮层里的按钮。
+       浮层是全屏接管的语境，浮标那句「这是演示版」此时也不该抢戏。
+       标记由 Overlay 组件挂（计数式，见 Overlay.tsx）。 */
+    html[data-overlay-open] #demo-badge { display: none; }`
   document.head.appendChild(style)
 
   const panel = wrap.querySelector<HTMLDivElement>('#demo-badge-panel')!

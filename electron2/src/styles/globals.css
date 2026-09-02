@@ -435,7 +435,26 @@ main::before {
   to { opacity: 1; transform: translateY(0); }
 }
 main > div {
-  animation: pageIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  /*
+   * 🔴 `animation-fill-mode` 曾经写的是 `both`，那是一个会**让所有弹层错位**的 bug。
+   *
+   * `both` = backwards + forwards ⇒ 动画结束后**永久保持最后一帧**，
+   * 而最后一帧是 `transform: translateY(0)` ——
+   * 一个恒等变换，但它照样让这个滚动容器成为 `position: fixed` 的**包含块**。
+   *
+   * 后果（子曰实测报的「主题设置点击之后没有反应」）：
+   *   弹层不再相对视口定位，而是相对这个容器。
+   *   实测 rect 从 `0,0,390×844` 变成 `30,0,386×814`；
+   *   而**页面一旦往下滚，弹层就渲染在容器顶部 —— 在视口外面**，看起来毫无反应。
+   *
+   * 这里没有 animation-delay，所以 `backwards` 本来就不做事；
+   * 而 `to` 那一帧（opacity 1 / translateY 0）与元素的基态完全一致，
+   * 所以 `forwards` 也不需要。去掉 fill-mode，动画结束后 transform 回到 `none`。
+   *
+   * ⚠️ 这只是根因。真正的护栏是**把弹层 portal 到 document.body**
+   *   —— 否则下一个人给任何祖先加一个 transform / filter / will-change，同样的 bug 会再犯。
+   */
+  animation: pageIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
   position: relative;
   z-index: 1;
 }
@@ -1148,7 +1167,15 @@ html:not([data-cursor='off']) textarea {
   /* 侧栏在窄屏没有位置：三入口移到底部拇指区 */
   .zen-aside { display: none; }
   .desktop-only { display: none; }
-  .page-pad { padding: 1rem 1rem calc(5.5rem + env(safe-area-inset-bottom)); }
+  /*
+   * 🔴 底部留白必须同时让开**底栏 + 演示浮标**。
+   *   原来只算了底栏（5.5rem）。而演示浮标在窄屏被挪到左下、
+   *   `bottom: calc(70px + safe-area)` —— 它比底栏更高一层，
+   *   于是每一页最后一张卡的最后一行都被它压住（实拍五屏，五屏都中）。
+   *   浮标高约 26px + 12px 间距 ⇒ 再让出 2.5rem。
+   *   桌面版没有浮标，但多留这一段也不碍事，好过两套数字各自漂移。
+   */
+  .page-pad { padding: 1rem 1rem calc(8rem + env(safe-area-inset-bottom)); }
 
   .mobile-tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
@@ -1680,5 +1707,175 @@ html:not([data-cursor='off']) textarea {
   font-size: 0.62rem; color: var(--text-muted); opacity: 0.7; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
+/* 翻页按钮：28px 圆形。不做 44px —— 它是辅助导航，主路径是看当前这一页 */
+.week-nav {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-muted); font-size: 15px; line-height: 1;
+  transition: border-color 0.16s, color 0.16s, opacity 0.16s;
+}
+.week-nav:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--text-secondary); }
+.week-nav:disabled { opacity: 0.3; cursor: default; }
+.week-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* 🔴 刻意没有 .week-col.is-today 这类规则 ——
    一旦"今天"被标出来，视线就跟着它往右走，那才是进度条的阅读方向。 */
+
+/* ---------- 那些美妙时刻 · 竖直时间轴（v3.7）---------- */
+/*
+ * 轴线用 ::before 画在容器上，而不是给每一条加上下半截线 ——
+ * 后者在第一条与最后一条会露出半根悬空的线头，那是时间轴最常见的一种脏。
+ */
+.moments-track { position: relative; padding-left: 1.25rem; }
+.moments-track::before {
+  content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px;
+  width: 1px; background: var(--border);
+}
+.moment {
+  position: relative;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 0.8rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.moment:last-child { margin-bottom: 0; }
+/* 轴上那个点：用那片花瓣自己的颜色，外面套一圈卡片底色把轴线断开 */
+.moment-dot {
+  position: absolute; left: -1.25rem; top: 1.05rem;
+  width: 9px; height: 9px; border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--bg-primary);
+}
+.moment-meta {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.35rem;
+}
+.moment-date { color: var(--text-secondary); }
+.moment-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
+/* 类别标是分类，不是奖状 —— 所以是最弱的一档，贴右 */
+.moment-kind { margin-left: auto; opacity: 0.8; }
+.moment-headline { font-size: 0.875rem; line-height: 1.7; }
+.moment-line {
+  font-size: 0.78rem; line-height: 1.7;
+  color: var(--text-muted); margin-top: 0.25rem;
+}
+
+/* ---------- 花语 · 书架与书页（v3.7）---------- */
+/*
+ * 原来是 `flex flex-wrap` 的五枚横排标签，在 390px 上折成 3+2 或 2+2+1 ——
+ * **折行位置由文字长度决定，而章节标题长度不齐，所以每次都折得不一样。**
+ * 一个折行不规律的横排是没有形状的。
+ * 改成等宽平铺的竖排书脊：形状由容器决定，永不折行。
+ */
+.hb-shelf {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  gap: 0.4rem; align-items: end;
+  padding: 0.2rem 0 0.35rem;
+}
+.hb-spine {
+  display: flex; flex-direction: column; align-items: center; gap: 0.45rem;
+  padding: 0.6rem 0.25rem 0.7rem;
+  border: 1px solid var(--border); border-radius: 8px 8px 3px 3px;
+  background: var(--bg-secondary); color: var(--text-muted);
+  transition: transform 0.22s ease, border-color 0.22s, color 0.22s, background 0.22s;
+  /*
+   * 🔴 `height` 而不是 `min-height`：实拍里第一本（「这座花园为什么存在」七字）
+   *   被标题撑到别人的 1.6 倍高，五道书脊高低差太大，
+   *   **看着像没对齐，而不像一排书。**
+   *   132px 足够放下最长的七字标题（竖排每字约 13px + 印章 22px + 间距）。
+   *   真实书架上书脊长短不一，但那是**厚度**不一，不是高度不一 ——
+   *   同一套书的高度是齐的，这里也该齐。
+   */
+  height: 132px; justify-content: flex-start; overflow: hidden;
+}
+.hb-spine:hover { color: var(--text-secondary); border-color: var(--border-strong); }
+/* 选中那一道被**抽出来一点** —— 书架上取书的真实动作，不需要额外的选中态说明 */
+.hb-spine.is-active {
+  transform: translateY(-6px);
+  border-color: var(--accent-dim); background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.35);
+}
+.hb-spine:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 印章：选中翻实心 */
+.hb-spine-seal {
+  width: 22px; height: 22px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; flex-shrink: 0;
+  background: var(--bg-hover); color: var(--text-muted);
+  transition: background 0.22s, color 0.22s;
+}
+.hb-spine.is-active .hb-spine-seal { background: var(--accent); color: #fff; }
+/* 标题竖排 —— 这是「书脊」这个隐喻的承重部件 */
+.hb-spine-title {
+  writing-mode: vertical-rl; text-orientation: upright;
+  font-size: 0.76rem; letter-spacing: 0.08em; line-height: 1.1;
+  /* 竖排下这两个才是「不换列、超出省略」—— 横排的 white-space/text-overflow 在这里同样生效 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-height: 100%;
+}
+/* 动效红线第三条：可关 */
+html[data-motion='off'] .hb-spine { transition: none; }
+html[data-motion='off'] .hb-spine.is-active { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hb-spine { transition: none; }
+  .hb-spine.is-active { transform: none; }
+}
+
+/* 书页：左侧一道装订边，与书脊构成「翻开的书」 */
+.hb-page {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-dim);
+  border-radius: 4px 16px 16px 4px;
+  padding: 1.15rem 1.1rem 1rem;
+  display: flex; flex-direction: column; gap: 1.35rem;
+}
+.hb-page-title {
+  font-size: 1.05rem; font-weight: 300; letter-spacing: 0.06em;
+}
+.hb-heading { font-size: 0.85rem; font-weight: 500; color: var(--accent); }
+.hb-para { font-size: 0.86rem; line-height: 1.95; color: var(--text-secondary); }
+/* 引文在原文里就是气口，排版不区分等于把气口读成了正文 */
+.hb-quote {
+  font-size: 0.8rem; line-height: 1.9; color: var(--text-muted);
+  font-style: italic; padding-left: 0.85rem;
+  border-left: 1px solid var(--border); margin-top: 0.3rem;
+}
+/* 翻章 */
+.hb-turn {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  border-top: 1px solid var(--border); padding-top: 0.85rem;
+}
+.hb-turn-btn {
+  font-size: 0.76rem; color: var(--text-muted); background: none; border: none;
+  padding: 0.3rem 0; text-align: left; transition: color 0.16s;
+  max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hb-turn-btn.is-next { text-align: right; }
+.hb-turn-btn:hover:not(:disabled) { color: var(--accent); }
+.hb-turn-btn:disabled { opacity: 0.4; }
+
+/* ---------- 花瓣打分行的十颗点（v3.7 修溢出）---------- */
+/*
+ * 原来点径与间距是写死的 17px / 4px，十颗合计 206px。
+ * 加上写死的名字栏（64px）与状态词（40px）+ 间距内距，整行 366px，
+ * 而 390px 的手机减掉浮层内距只剩 ~358px ⇒ **最右那一格被顶出边框**。
+ * 写死的三段加起来超过容器，加宽任何一段都不可能解决 —— 只能让中间这段可收缩。
+ *
+ * clamp 的三个值：窄屏下限 12px（还点得到）· 3.4vw 跟着屏宽走 · 宽屏回到 17px。
+ * 高度跟着宽度走（用同一个 clamp），所以**任何屏宽下都还是圆的**。
+ */
+.psr-dots {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center;
+  gap: clamp(2px, 0.8vw, 4px);
+}
+.psr-dot {
+  width: clamp(12px, 3.4vw, 17px);
+  height: clamp(12px, 3.4vw, 17px);
+  border-radius: 50%; border: none; padding: 0;
+  flex: 0 0 auto;
+  transition: transform 0.16s, background-color 0.16s, opacity 0.16s;
+}
+.psr-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html[data-motion='off'] .psr-dot { transition: none; }
+@media (prefers-reduced-motion: reduce) { .psr-dot { transition: none; } }

@@ -18,18 +18,36 @@ interface Props {
   testId?: string
 }
 
+/**
+ * 🔴 这一行为什么会溢出边框（子曰实拍点名：「最后的舒展部分已经超出边框了」）
+ *
+ * 原来三段全是**写死的宽度**：
+ *   名字 `w-16`（64px）+ 十颗点（10×17 + 9×4 = 206px）+ 状态词 `w-10`（40px）
+ *   + 两处 `gap-3`（24px）+ 卡片左右内距（32px）= **366px**
+ * 而 390px 的手机减掉浮层内距只剩 ~358px ⇒ **超 8px，最右那一格被顶出去**。
+ * 选中那颗还带 `scale(1.25)`，又往外顶一点。
+ *
+ * 我上一版只把状态词从 `w-8` 加宽到 `w-10` —— 那是把溢出**加重**了 8px，
+ * 只是恰好换了个溢出的方向（从竖排变成出框）。
+ * **写死的三段加起来超过容器，加宽任何一段都不可能解决。**
+ *
+ * ⇒ 让中间那段**随视口收缩**（`clamp`），并且保持圆形：
+ *   390px 上点径 ~13px、间距 ~3px ⇒ 十颗合计 ~161px，整行 ~313px，留有余量；
+ *   宽屏上回到原来的 17px。
+ * 这样任何瓣数、任何屏宽都不会溢出 —— 不再靠"凑一组刚好的像素"。
+ */
 export function PetalScoreRow({ dimension, value, onChange, showStage = true, testId }: Props) {
   return (
-    <div className="card py-3 px-4 flex items-center gap-3" data-testid={testId ?? 'petal-score-row'}>
-      <span className="text-sm w-16 flex-shrink-0">{dimension.name}</span>
-      <div className="flex-1 flex items-center gap-1">
+    <div className="card py-3 px-3 sm:px-4 flex items-center gap-2 sm:gap-3" data-testid={testId ?? 'petal-score-row'}>
+      {/* 名字也跟着收一档：窄屏 56px 够放四个字（最长的花瓣名是四字） */}
+      <span className="text-sm w-14 sm:w-16 flex-shrink-0 truncate">{dimension.name}</span>
+      <div className="psr-dots">
         {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
           <button
             key={n}
             aria-label={`${dimension.name} ${n} 分`}
-            className="rounded-full transition-all"
+            className="psr-dot"
             style={{
-              width: 17, height: 17,
               backgroundColor: n <= value ? dimension.colorHex : 'var(--bg-hover)',
               opacity: n <= value ? 0.45 + (n / 10) * 0.55 : 1,
               transform: n === value ? 'scale(1.25)' : 'scale(1)',
@@ -39,7 +57,9 @@ export function PetalScoreRow({ dimension, value, onChange, showStage = true, te
         ))}
       </div>
       {showStage && (
-        <span className="text-xs text-[var(--text-muted)] w-8 text-right">{scoreStage(value)}</span>
+        <span className="text-xs text-[var(--text-muted)] text-right whitespace-nowrap flex-shrink-0">
+          {scoreStage(value)}
+        </span>
       )}
     </div>
   )

@@ -3,6 +3,7 @@
 
 import { v4 as uuid } from './uuid'
 import { parseQuarterlyRow, toQuarterlyRow, type QuarterlyReview } from '../models/quarterly'
+import type { AhaMomentRow } from '../app/electron'
 
 // ========== 诊断日志 ==========
 // 默认静默。排查时在 DevTools 执行 localStorage.setItem('lifeos:debug','1') 后刷新。
@@ -259,6 +260,17 @@ export async function addSnapshot(row: { id: string; weekKey: string; takenAt: n
 /** 本地埋点：只写本地 SQLite events 表，不出网（S4/J6） */
 export async function logEvent(name: string) {
   try { await api().dbEventsLog(name) } catch { /* 埋点失败不影响任何功能 */ }
+}
+
+// ---- 那些美妙时刻（v3.7）----
+//
+// 落这一条**绝不能让主流程失败**：它是「回看」这个附加能力的数据源，
+// 而 Aha 本身该不该播、闸门算不算过，都与它无关。所以 try/catch 吞掉。
+export async function addMoment(row: AhaMomentRow) {
+  try { await api().dbMomentsAdd(row) } catch { /* 回看是附加能力，写不进去不该影响播放 */ }
+}
+export async function getMoments(): Promise<AhaMomentRow[]> {
+  try { return await api().dbMomentsGetAll() } catch { return [] }
 }
 
 // ========== 季度会谈 / 焦点维度（v3.2） ==========

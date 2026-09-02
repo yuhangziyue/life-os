@@ -85,8 +85,13 @@ export function Garden() {
             )}
             {/* 简约收口（v3.6.1）：这里原本是四行文字（状态词/今日照顾/形状句/沉睡各一行）。
                 合并成一行小字 —— 花下面的字越多，花本身越不像第一语言 */}
+            {/* 🔴 原来是「今日照顾了 {covered}/{总数} 片花瓣」——**又一处完成率**。
+                `4/8` 读起来就是「满分 8 你拿了 4」，而这产品的立论恰恰是
+                **你不可能也不该照顾全部**（对外那句主张：只能让其中两三片盛开）。
+                分母在这里不只是评判，它还在说一句与产品主张相反的话。
+                改成只说照顾了哪几片的数目，不给分母。 */}
             <div className="text-xs text-[var(--text-muted)] leading-relaxed px-2">
-              今日照顾了 {covered}/{dimensions.length} 片花瓣
+              {covered > 0 ? `今天照顾了 ${covered} 片花瓣` : '今天还没有分出去的光'}
               {dormantDims.length > 0 && ` · 有 ${dormantDims.length} 片合着，在安静地等你`}
             </div>
           </div>
@@ -97,7 +102,19 @@ export function Garden() {
 
         {/* ② 时间汇总。三个数都不可能归零 —— 这是它们能被显示出来的前提 */}
         <div className="card space-y-3" data-testid="time-summary">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)]">陪你走过的时间</h2>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium text-[var(--text-secondary)]">陪你走过的时间</h2>
+            {/* 那些美妙时刻（v3.7，子曰点名）。
+                放在这张卡上是对的：这张卡讲的就是「时间」，
+                而那些定格帧是这段时间里**有刻度的那几个点**。 */}
+            <Link
+              to="/moments"
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex-shrink-0"
+              data-testid="link-moments"
+            >
+              那些美妙时刻 ›
+            </Link>
+          </div>
           <div className="metric-row">
             <div className="metric-cell" data-testid="companion-days">
               <div className="metric-value">{companionDays}</div>

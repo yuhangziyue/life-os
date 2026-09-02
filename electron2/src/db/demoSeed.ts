@@ -15,6 +15,12 @@ import { QUALITY_IMPACT } from '../models/action'
 import { DEFAULT_RUBRICS } from '../models/dimension'
 import { emptySnapshot, type WebSnapshot } from './webAdapter'
 
+/**
+ * 演示数据版本。**改动演示数据时必须 +1**，否则老访客看不到新内容。
+ * 见下方 `snap.settings.demoSeedVersion` 那段注释里的安全边界。
+ */
+export const DEMO_SEED_VERSION = '2'
+
 const DAY = 24 * 60 * 60 * 1000
 /** 与 engine/scoring.ts 的 IMPACT_MULTIPLIER 必须一致，改了那边这里要跟着改 */
 const IMPACT_MULTIPLIER = 0.2
@@ -99,7 +105,7 @@ const DIMS: DimDef[] = [
     key: 'growth', name: '个人成长', icon: 'Brain', colorHex: '#9B7BB8',
     demoTarget: 8, demoWeekly: 4,
     initialScore: 4, targetScore: 8.0,
-    identity: '一直在学新东西的人',
+    identity: '一直在学新东西',   // 数据存名词短语，「成为…的人」这个框由 identityLine 负责
     recentDays: [0, 1, 2, 4, 5, 7, 10, 14, 19, 25], historyCount: 9,
     branches: [
       { name: '阅读', children: ['专业书籍', '思维/哲学', '文学/传记'] },
@@ -122,7 +128,7 @@ const DIMS: DimDef[] = [
     key: 'health', name: '身心健康', icon: 'Heart', colorHex: '#D89A9E',
     demoTarget: 7, demoWeekly: 3,
     initialScore: 3, targetScore: 6.6,
-    identity: '能跑十公里的人',
+    identity: '能跑十公里',
     recentDays: [0, 1, 2, 3, 5, 6, 8, 11, 15, 20, 26], historyCount: 12,
     branches: [
       { name: '运动', children: ['有氧运动', '力量训练', '柔韧性/拉伸'] },
@@ -481,9 +487,73 @@ export function buildDemoSnapshot(now: number): WebSnapshot {
     })
   }
 
+  /*
+   * ========== 那些美妙时刻（v3.7）==========
+   *
+   * 演示花园必须有几条，否则那一页在演示里**永远是空的** ——
+   * 而这些定格帧是刻意做稀有的（同类冷却 14/30 天、每天 1 条、每周 3 条），
+   * 一个来看三分钟的陌生人正常路径下一条都碰不到。
+   * 这与「Aha 展柜」是同一个理由：**稀有对产品是对的，对演示是致命的。**
+   *
+   * 🔴 但数量必须**如实反映稀有**：三个月只放五条。
+   *   放二十条就变成了徽章墙，那正好是这套设计要避开的东西。
+   */
+  const petalOf = (name: string) => snap.dimensions.find(d => d.name === name)
+  const MOMENTS: { kind: string; daysAgo: number; hour: number; headline: string; lines: string[]; petal: string }[] = [
+    {
+      kind: 'first_ever', daysAgo: 88, hour: 21,
+      headline: '这是这座花园的第一笔光。它现在全在这一片上。',
+      lines: [], petal: '职业发展',
+    },
+    {
+      kind: 'week_light', daysAgo: 81, hour: 9,
+      headline: '这一周你来过五天。',
+      lines: ['花园记住的是在场，不是表现。'], petal: '个人成长',
+    },
+    {
+      kind: 'stage_up', daysAgo: 47, hour: 22,
+      headline: '「个人成长」从萌芽走到了舒展。',
+      lines: ['这一档是它自己走过来的，别处这几周分得少一些。'], petal: '个人成长',
+    },
+    {
+      kind: 'awaken', daysAgo: 23, hour: 8,
+      headline: '「家庭关系」合了二十六天，今天重新拿到光。',
+      lines: [], petal: '家庭关系',
+    },
+    {
+      kind: 'light_shift', daysAgo: 6, hour: 20,
+      headline: '今天的光偏向了身心健康，别处就分得少。',
+      lines: [], petal: '身心健康',
+    },
+  ]
+  for (const m of MOMENTS) {
+    const at = startOfDay(today) - m.daysAgo * DAY + m.hour * 60 * 60 * 1000
+    snap.aha_moments.push({
+      id: `${m.kind}-${at}`,
+      kind: m.kind,
+      at,
+      headline: m.headline,
+      lines: m.lines,
+      colorHex: petalOf(m.petal)?.colorHex ?? '',
+    })
+  }
+
   // ========== 设置 ==========
   // 跳过首启引导：演示页的第一眼必须是那朵开好的花，不是一个空白问卷。
   // 想看引导流程走「设置 → 重新体验入园引导」，那个入口本来就有。
+  // 演示数据的版本号（v3.7）。
+  //
+  // 它解决的问题：演示数据改了（比如这一版新增「那些美妙时刻」），
+  // 而老访客的 IndexedDB 里存着旧快照 ——
+  // `{ ...emptySnapshot(), ...db }` 会把新表补成空数组，于是**新页面永远是空的**。
+  //
+  // 🔴 但自动重灌有一个绝不能碰的边界：**用户点过「清空，种我自己的」之后，
+  //   那份数据是他自己的，一次都不许被覆盖。**
+  //   判据就是这个 key 的**存在性**：`emptySeed` 刻意不写它，
+  //   所以「没有这个 key」⇒ 这不是演示花园 ⇒ 永不自动重灌。
+  //   代价是：版本号出现之前的老演示访客要手点一次「恢复演示数据」。
+  //   这个代价有界，而反过来（误删用户数据）不可挽回。
+  snap.settings.demoSeedVersion = DEMO_SEED_VERSION
   snap.settings.onboardingDone = '1'
   snap.settings.quarterlyDeferUntil = '0'
   snap.settings.quarterlyDeferCount = '0'

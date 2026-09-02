@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Overlay } from './Overlay'
 import { useStore } from '../stores/useStore'
 import { THEMES } from '../services/theme'
 
@@ -33,6 +34,7 @@ export function ThemeSheet({ open, onClose }: { open: boolean; onClose: () => vo
   if (!open) return null
 
   return (
+    <Overlay>
     <div
       className="sheet-scrim"
       data-testid="theme-sheet"
@@ -74,5 +76,6 @@ export function ThemeSheet({ open, onClose }: { open: boolean; onClose: () => vo
         })}
       </div>
     </div>
+    </Overlay>
   )
 }
