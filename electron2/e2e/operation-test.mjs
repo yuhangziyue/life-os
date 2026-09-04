@@ -831,14 +831,31 @@ await phase('阶段 10.3：花园任务（目标提醒 + 一键完成 + 回响�
   const goalId = await p.eval(`
     localStorage.removeItem('lifeos:garden-dismissed') // 手工点过「今天先不看」也不影响测试
     const dims = await window.electronAPI.dbDimensionsGetAll()
-    const career = dims.find(d => d.name === '职业发展')
+    /*
+     * 🔴 这里原来写死挂在「职业发展」上 —— 而任务生成的 ① 分支会过滤掉
+     *   **今天已经被照顾过**的花瓣（那个 hasToday 过滤）。
+     *   ⚠️ 这段注释里不能出现反引号 —— 它在 p.eval 的模板串里会把字符串截断（今天犯过两次）。
+     *   库里只要今天有一条职业发展的记录，任务就不生成，
+     *   于是这一条连同后面整条「记一笔」链一起红 —— 而产品是对的。
+     *   改成**动态挑一片今天还没有记录的花瓣**：前提由用例自己保证，不靠库的状态碰巧合适。
+     */
+    const acts = await window.electronAPI.dbActionsGetAll()
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0)
+    const touched = new Set(acts.filter(a => a.date >= t0.getTime() && a.isCompleted).map(a => a.dimensionId))
+    const target = dims.filter(d => d.isEnabled !== 0 && !touched.has(d.id))[0]
+    if (!target) return null   // 八片今天全照顾过了 —— 调用方据此跳过，而不是误判成产品坏了
     const id = 'e2e-goal-' + Date.now()
     const now = Date.now()
     await window.electronAPI.dbGoalsAdd({ id, title: '操作测试目标', description: '',
       quantitativeTarget: null, quantitativeUnit: null, isActive: 1,
-      createdAt: now, updatedAt: now, dimensionId: career.id })
+      createdAt: now, updatedAt: now, dimensionId: target.id })
     return id
   `)
+  if (!goalId) {
+    // 八片今天全照顾过了 ⇒ ① 分支本来就不该产出任务。这是产品对，不是产品坏。
+    // 说出来而不是静默跳过 —— 静默跳过等于把"这次没测"伪装成"这次通过"。
+    check('目标驱动的轻推：本轮跳过（今天每一片花瓣都已被照顾，① 分支本就不产任务）', true, '前提不成立')
+  } else {
   await reload()
   await goto('#/')               // v3.6：轻推与一瞥都在「今天」这一屏，而「今天」就是默认落地页
   const card = await p.eval(`return {
@@ -931,6 +948,7 @@ await phase('阶段 10.3：花园任务（目标提醒 + 一键完成 + 回响�
     return 1
   `)
   await sleep(800)
+  }
 })
 
 // ======================================================================
@@ -1650,13 +1668,22 @@ await phase('阶段 10.11：季度会谈 + 焦点维度（v3.2 A 组）', async 
       completed: !!r,
       focusCount: r ? JSON.parse(r.focusDimensionIds).length : -1,
       intent: r ? r.intent : '',
+      /*
+       * 🔴 这里原来断的是 currentScore === 7 —— **断错了字段**。
+       *   会谈写的是 initialScore:7 与 currentScore:7 两个值，
+       *   但 loadData 会立刻重算 currentScore = initialScore + Σimpact×0.2。
+       *   所以 currentScore === 7 只在「这片花瓣近 30 天零记录」时才成立 ——
+       *   库里一有记录它就漂（实测 7.6 / 8.6），而那与会谈有没有正确落库无关。
+       *   会谈落库的证据是 initialScore，断它。
+       */
+      firstInitial: sorted[0].initialScore,
       firstScore: sorted[0].currentScore,
       focusedDims: dims.filter(d => d.focusSince != null).length,
     }
   `)
   check('会谈完成：完成时刻 / 焦点 / 分数 / 意图 四处落库',
         closing && saved.completed && saved.focusCount === 2 && saved.focusedDims === 2
-        && saved.firstScore === 7 && saved.intent.includes('慢一点'),
+        && saved.firstInitial === 7 && saved.intent.includes('慢一点'),
         JSON.stringify(saved))
 
   await p.eval(`${HELPERS}; window.__t.byText('button', '回到花园').click(); return 1`)
@@ -2407,6 +2434,11 @@ await phase('阶段 10.15：光的分配 —— 进门的一眼 + 闸门（v3.6 
     const today = new Date(); today.setHours(0,0,0,0)
     for (let i = 0; i < 5; i++) {
       const d = dims[i]
+      // 🔴 固定 id 的插桩必须**先删后插**：这一段一旦中途崩掉，
+      //   'aha-floor-N' 就留在库里，下一轮插入直接 UNIQUE 冲突、整个阶段炸掉 ——
+      //   而报出来的错是「产品的 DB 约束失败」，看不出是上一轮的残渣。
+      //   run.sh 已经在起点重置了库，这里再兜一层：单独跑这一个用例时也幂等。
+      await window.electronAPI.dbActionsDelete('aha-floor-' + i).catch(() => {})
       await window.electronAPI.dbActionsAdd({
         id: 'aha-floor-' + i, date: today.getTime() - i * 86400000,
         description: 'Aha 通道验证 · 铺底', quality: 'milestone', impact: 5, isCompleted: 1,
@@ -2761,6 +2793,103 @@ await phase('阶段 10.16：导出完整性 · 补记 · 留言 · 你猜 · 动
     return 1
   `)
   await sleep(500)
+})
+
+// ======================================================================
+await phase('阶段 10.99：红线全屏扫描（v3.7 实拍走查之后补的）', async () => {
+  /**
+   * 🔴 这个阶段存在的理由，是 v3.7 那次实拍走查抓到的教训：
+   *
+   *   方案定稿、二十条实施完、**四档全绿**之后按真实尺寸拍图，
+   *   **第一屏就看出三处红线违规** —— 其中两处是「完成率」形态的数字
+   *   （`我今天做的 4/4`、`今日照顾了 4/8 片花瓣`），就长在首屏第一眼上。
+   *
+   *   而 e2e 里**本来就有**一条 `!/\d+\/\d+/` 的断言 ——
+   *   它只盖在「约定」那一块。
+   *
+   *   ⇒ **红线写进文档不等于红线被守住；断言只守它被写去守的那几行。**
+   *
+   * 所以这里改成**逐页全屏扫描**：把每一屏的可见文本整段拿出来对红线过一遍。
+   * 它抓不到视觉问题（那要靠 `npm run shoot` 逐屏看图），但能抓住"文案层面的红线"。
+   */
+  const PAGES = [
+    '#/', '#/history', '#/garden', '#/moments',
+    '#/review', '#/review/week', '#/review/month', '#/review/year', '#/review/history',
+    '#/stats', '#/settings', '#/settings/petals', '#/settings/ambience',
+    '#/settings/backup', '#/settings/about', '#/handbook', '#/actions', '#/dimensions',
+  ]
+
+  /** 每条规则：命中即违规。允许豁免的地方在 skip 里说清为什么 */
+  const RULES = [
+    {
+      name: '完成率（N/M 形式的分数）',
+      re: /(?:照顾了|做的|完成)\s*·?\s*\d+\s*\/\s*\d+/,
+      why: '分母把记录变成待办清单的勾 —— 4/4 是满分，3/4 就是欠一笔',
+    },
+    {
+      name: '评判词',
+      re: /恭喜|真棒|做得好|再接再厉|太棒|了不起/,
+      why: '红线 3：不评判',
+    },
+    {
+      name: '催办词',
+      re: /别忘|该去了|快去|落后了|加油|赶紧/,
+      why: '红线 2：零催办',
+    },
+    {
+      name: '连击 / 连续天数',
+      re: /连续\s*\d+\s*天|最长连[着续]/,
+      why: '红线 6：连续天数一旦被显示就变成可以被打断的东西',
+    },
+    {
+      name: '禁用词「管理」「系统」',
+      re: /维度管理|数据管理|人生管理|系统摘要/,
+      why: '晓雅 X1 禁用词；且「维度」是规格词，用户看到的是花瓣',
+    },
+    {
+      name: '重复拼接的身份句',
+      re: /的人的人/,
+      why: 'identity 是用户自由输入，模板必须容错（identityLine）',
+    },
+    {
+      name: '指向已删 UI 的说明',
+      re: /侧栏|\+ 快速记录|花语手册/,
+      why: '侧栏 v3.6 已删；教用户去点不存在的东西，比没有说明更坏',
+    },
+  ]
+
+  /**
+   * 🔴 匹配前先剥掉**引号内的内容**。
+   *
+   * 首次跑这条扫描就命中了 `#/handbook`：
+   *   「没有排名、没有考核、没有\u201C本周你落后了百分之几\u201D」
+   *   「这个产品永远不会对你说\u201C你落后了\u201D。」
+   * 两处都是**产品在声明它不会说那句话** ——
+   * **产品「引用」一句它不说的话，与产品「说」那句话，是相反的两件事。**
+   *
+   * 这正是书香警告的那类误报，而她给的理由必须记住：
+   * **误报会让门禁被人关掉，比没有门禁更糟 ——
+   *   而第一个被误报的人，正是最有权限关掉它的人。**
+   */
+  const stripQuoted = t => t
+    .replace(/"[^"]*"/g, '')                     // ASCII 双引号（手册用的是这种）
+    .replace(/\u201C[^\u201D]*\u201D/g, '')   // 中文弯引号
+    .replace(/「[^」]*」/g, '')                   // 直角引号
+    .replace(/\u2018[^\u2019]*\u2019/g, '')   // 中文单引号
+
+  const hits = []
+  for (const hash of PAGES) {
+    await goto(hash)
+    await sleep(260)
+    const raw = await p.eval(`return (document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ')`)
+    const text = stripQuoted(raw)
+    for (const r of RULES) {
+      const m = new RegExp(r.re.source, r.re.flags).exec(text)
+      if (m) hits.push(`${hash} 命中「${r.name}」：…${m[0]}…`)
+    }
+  }
+  check(`🔴 ${PAGES.length} 个页面全屏扫描：一条红线都没踩`,
+        hits.length === 0, hits.join(' / ') || `${PAGES.length} 页干净`)
 })
 
 // ======================================================================

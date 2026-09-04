@@ -1,12 +1,28 @@
-// v3.7 界面实拍：手机尺寸（390×844）逐屏截图，给子曰看现在长什么样。
+// 逐屏实拍：手机尺寸（390×844）把每一屏拍下来。
+//
+// ============ 这个脚本为什么是常驻纪律，不是一次性工具 ============
+// v3.7 那次：方案定稿、二十条实施完、**四档验证全绿**
+// （单测 96 · e2e 221/225/225 · web-verify 72）之后拍了一遍图，
+// **第一屏就看出三处红线违规** —— 两处是「完成率」形态的数字，就长在首屏第一眼上，
+// 而产品的红线明文禁止它。
+//
+//   🔴 **全绿的自动化验证，一次都没看过屏幕长什么样。**
+//   🔴 **红线写进文档不等于红线被守住 —— 断言只守它被写去守的那几行。**
+//
+// ⇒ 所以它不叫 shoot-v37：**版本命名的工具下个版本必然被复制成 shoot-v38，然后两份开始漂移。**
+//   每个版本收口前跑一次 `npm run shoot`，逐屏看一遍，再说完成。
+//
 // 复用 web-verify 的宿主与 CDP 连法，不自己另写一套。
+//
+// 用法：npm run shoot            → 输出到 /tmp/shots/latest
+//      SHOOT_OUT=<dir> npm run shoot
 import { spawn } from 'node:child_process'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { attach, sleep } from './cdp.mjs'
 
-const OUT = process.env.SHOOT_OUT || '/tmp/shots/v37'
+const OUT = process.env.SHOOT_OUT || '/tmp/shots/latest'
 fs.mkdirSync(OUT, { recursive: true })
 
 const ROOT = path.resolve('dist-web')

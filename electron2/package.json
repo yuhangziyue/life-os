@@ -22,7 +22,8 @@
     "e2e:packaged": "./e2e/run.sh packaged",
     "lint": "eslint . --ext ts,tsx",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "shoot": "npm run build:web && node e2e/shoot.mjs"
   },
   "dependencies": {
     "@types/better-sqlite3": "^9.6.0",
